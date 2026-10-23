@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사유원 예약 이관</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f6f5f1; --card:#ffffff; --ink:#22231f; --muted:#6b6d66; --line:#e2e0d8;
+  --accent:#2f5d50; --accent-soft:#e3ece8; --warn:#9a5b00; --warn-soft:#fbf0dc;
+  --bad:#a23b2c; --bad-soft:#f8e3df; --ok:#2f6b3a; --ok-soft:#e2f0e3;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#171815; --card:#20211d; --ink:#ecebe5; --muted:#a3a59c; --line:#34362f;
+    --accent:#7fb7a3; --accent-soft:#25362f; --warn:#e2b25c; --warn-soft:#3a2f1a;
+    --bad:#e58a7b; --bad-soft:#3d2420; --ok:#8fcf98; --ok-soft:#1f3322;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
+header{padding:16px 16px 4px;max-width:1100px;margin:0 auto}
+header h1{margin:0;font-size:22px}
+header p{margin:4px 0 0;color:var(--muted)}
+/* 제목·작업 날짜·단계 탭은 화면 위에 고정, 그 아래 내용만 스크롤 */
+.topbar{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line)}
+nav{max-width:1100px;margin:0 auto;padding:10px 16px;display:flex;gap:6px;flex-wrap:wrap}
+nav button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 14px;border-radius:999px;cursor:pointer;font:inherit}
+nav button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+nav button .n{font-weight:700;margin-right:4px}
+main{max-width:1100px;margin:0 auto;padding:16px}
+section{display:none}
+section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px}
+.card h2{margin:0 0 4px;font-size:17px}
+.card h3{margin:0 0 8px;font-size:15px}
+.hint{color:var(--muted);font-size:13px;margin:0 0 12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+textarea{width:100%;min-height:180px;border:1px solid var(--line);border-radius:8px;padding:10px;font:13px/1.5 ui-monospace,Consolas,monospace;background:var(--bg);color:var(--ink);resize:vertical}
+textarea.out{min-height:120px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.btn{border:1px solid var(--accent);background:var(--accent);color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font:inherit;font-size:14px}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:default}
+select,input[type=text],input[type=number]{border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--card);color:var(--ink);font:inherit;font-size:14px}
+label.chk{display:inline-flex;gap:6px;align-items:center;font-size:14px}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;margin-top:10px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:var(--bg);font-weight:600;color:var(--muted)}
+td[contenteditable]{outline:none}
+td[contenteditable]:focus{background:var(--accent-soft)}
+td.num{text-align:right}
+.tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.tag.bad{background:var(--bad-soft);color:var(--bad)}
+.tag.mute{background:var(--bg);color:var(--muted)}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.stat{background:var(--bg);border-radius:8px;padding:8px 12px;min-width:110px}
+.stat b{display:block;font-size:20px}
+.stat span{font-size:12px;color:var(--muted)}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--muted);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+img.preview{max-width:100%;max-height:320px;border-radius:8px;margin-top:10px;display:none}
+.empty{color:var(--muted);font-size:14px;padding:14px;text-align:center}
+</style>
+</head>
+<body>
+<div class="topbar">
+<header>
+  <h1>네이버 예약 → 사유원 전산 이관</h1></header>
+<div id="today" style="max-width:1100px;margin:10px auto 0;padding:0 16px">
+  <div class="card" style="margin:0;padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <label class="chk"><b>작업 날짜</b> <input type="date" id="workDate"></label>
+    <b id="todayText"></b>
+    <button class="btn ghost" id="todayBack" style="padding:4px 10px;display:none">오늘로</button>
+    <span class="tag" id="todayTag"></span>
+    <label class="chk" style="margin-left:auto">요금 기준
+      <select id="todayDay"><option value="weekday">평일</option><option value="weekend">주말/공휴일</option></select>
+    </label>
+  </div>
+</div>
+<nav id="nav">
+  <button data-s="1" class="on"><span class="n">1</span>네이버 예약 정리</button>
+  <button data-s="2"><span class="n">2</span>환불 반영 · 최종 인원</button>
+  <button data-s="4"><span class="n">3</span>일괄등록</button>
+  <button id="btnReset" style="margin-left:auto">↺ 리셋</button>
+</nav>
+</div>
+<main>
+
+<!-- ============ 1단계 ============ -->
+<section id="s1" class="on">
+  <div class="card">
+    <h2>1단계 · 네이버 예약 텍스트 정리</h2>    <textarea id="inAll" placeholder="네이버 예약 텍스트 붙여넣기 (오전권·오후권 섞여 있어도 됩니다)" style="min-height:240px"></textarea>
+    <div class="row">
+      <button class="btn" id="btnParse">정리하기</button>
+      <label class="chk">구분자
+        <select id="sep1"><option value=",">쉼표 ( , )</option><option value="\t">탭 (엑셀 칸 자동 분리)</option></select>
+      </label>
+      <label class="chk"><input type="checkbox" id="hdr1"> 머리글 포함</label>
+    </div>
+  </div>
+  <div class="card" id="res1" style="display:none">
+    <h2>정리 결과</h2>
+    <p class="hint">표의 칸은 클릭해서 바로 고칠 수 있고, 고친 내용은 아래 텍스트와 다음 단계에 반영됩니다.</p>
+    <div class="stats" id="stat1"></div>
+    <div id="warn1"></div>
+    <div id="tbl1"></div>
+    <div class="row"><button class="btn ghost" data-copy="out1">결과 복사</button></div>
+    <textarea class="out" id="out1" readonly style="min-height:200px"></textarea>
+  </div>
+  <div class="row" style="justify-content:flex-end"><button class="btn" data-go="2">2단계로 이동 →</button></div>
+</section>
+
+<!-- ============ 2단계 ============ -->
+<section id="s2">
+  <div class="card">
+    <h2>2단계 · 환불 반영 · 최종 인원</h2>    <div class="row">
+      <label class="chk">엑셀 비밀번호 <input type="password" id="pw2" autocomplete="off" style="width:140px"></label>
+      <label class="chk"><input type="checkbox" id="pwKeep2" checked> 이 컴퓨터에 기억</label>
+    </div>
+    <div class="drop" id="drop2"><span id="drop2Label">엑셀 파일을 끌어다 놓거나 클릭해서 선택</span><input type="file" id="file2" accept=".xlsx,.xls,.csv" hidden></div>
+    <details style="margin-top:10px"><summary class="hint" style="cursor:pointer">파일 대신 표를 붙여넣기</summary>
+      <textarea id="in2" placeholder="엑셀 범위를 복사해서 붙여넣기 (머리글 행 포함)" style="min-height:110px;margin-top:8px"></textarea>
+    </details>
+    <div class="row" id="prices2">
+      <b style="font-size:14px">관람권 가격</b>
+      <label class="chk">평일 성인 <input type="number" step="1000" data-price="weekday.adult" style="width:100px"></label>
+      <label class="chk">평일 학생 <input type="number" step="1000" data-price="weekday.student" style="width:100px"></label>
+      <label class="chk">주말 성인 <input type="number" step="1000" data-price="weekend.adult" style="width:100px"></label>
+      <label class="chk">주말 학생 <input type="number" step="1000" data-price="weekend.student" style="width:100px"></label>
+      <button class="btn" id="priceSave" disabled>저장</button>
+      <button class="btn ghost" id="priceReset">처음 가격으로</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="btnCheck">확인하기</button>
+      <button class="btn ghost" id="btnManual" style="border-color:var(--bad);color:var(--bad)">오류 · 1단계 표로 직접 수정</button>
+      <button class="btn ghost" id="btnColmap" style="display:none">엑셀 열 인식 수정하기</button>
+    </div>
+    <div class="row" id="colmap2" style="display:none"></div>
+  </div>
+  <div class="card" id="res3" style="display:none">
+    <h2>최종 인원</h2>
+    <div class="stats" id="stat3"></div>
+    <div id="tbl3"></div>
+    <div id="unmatched3"></div>
+    <div class="row"><button class="btn ghost" data-copy="out3">최종 명단 복사</button></div>
+    <textarea class="out" id="out3" readonly></textarea>
+  </div>
+  <div class="row" style="justify-content:flex-end"><button class="btn" data-go="4">3단계로 가기 →</button></div>
+</section>
+
+<!-- ============ 4단계 ============ -->
+<section id="s4">
+  <div class="card">
+    <h2>3단계 · 시스템 일괄등록용 명단</h2>
+    <div class="stats" id="stat4"></div>
+  </div>
+  <div id="groups4"></div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- 공통 ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const PHONE_RE = /(01[016789])[\s.\-]?(\d{3,4})[\s.\-]?(\d{4})/g;
+const digits = s => String(s ?? '').replace(/\D/g, '');
+const fmtPhone = s => { const d = digits(s); return d.length === 11 ? `${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}` : d.length === 10 ? `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}` : String(s ?? '').trim(); };
+const won = n => Number(n || 0).toLocaleString('ko-KR');
+const num = v => { const n = Number(String(v ?? '').replace(/[^\d.\-]/g, '')); return isNaN(n) ? 0 : n; };
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 1600); }
+function csvCell(v, sep){ v = String(v ?? ''); return sep === ',' && /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; }
+function toLines(rows, sep){ return rows.map(r => r.map(c => csvCell(c, sep)).join(sep)).join('\n'); }
+
+document.querySelectorAll('#nav button[data-s]').forEach(b => b.onclick = () => go(b.dataset.s));
+// 리셋: 붙여넣은 텍스트·엑셀·결과를 모두 지우고 처음 화면으로 (가격·엑셀 비밀번호는 유지)
+$('btnReset').onclick = () => {
+  if (!confirm('붙여넣은 텍스트, 엑셀, 정리 결과를 모두 지우고 처음부터 시작할까요?\n(관람권 가격과 엑셀 비밀번호는 그대로 유지됩니다)')) return;
+  // 새로고침 때 브라우저가 입력칸 내용을 되살리지 않도록 먼저 비움
+  document.querySelectorAll('textarea').forEach(t => t.value = '');
+  location.reload();
+};
+function go(n){
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.s === String(n)));
+  document.querySelectorAll('main section').forEach(s => s.classList.toggle('on', s.id === 's' + n));
+  if (String(n) === '4') renderBulk(); // 일괄등록 탭을 열 때마다 최신 명단으로 다시 만듦
+}
+document.addEventListener('click', e => {
+  const id = e.target.dataset?.copy; if (!id) return;
+  navigator.clipboard.writeText($(id).value).then(() => toast('복사했습니다'));
+});
+
+/* 상태 */
+const state = { rows: [], refunds: [], final: [], finalEdits: {} };
+
+/* ---------- 오늘 날짜 기준 평일/주말 (모든 단계 공통) ---------- */
+// 공휴일·대체공휴일 (주말에 겹치는 날은 생략). 해마다 추가 필요
+const HOLIDAYS = {
+  '2026-01-01': '신정', '2026-02-16': '설날 연휴', '2026-02-17': '설날', '2026-02-18': '설날 연휴',
+  '2026-03-02': '삼일절 대체공휴일', '2026-05-05': '어린이날', '2026-05-25': '부처님오신날 대체공휴일',
+  '2026-06-03': '지방선거', '2026-08-17': '광복절 대체공휴일', '2026-09-24': '추석 연휴', '2026-09-25': '추석',
+  '2026-10-05': '개천절 대체공휴일', '2026-10-09': '한글날', '2026-12-25': '성탄절',
+};
+const WEEKDAYS = ['일','월','화','수','목','금','토'];
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function autoDayType(d){
+  const h = HOLIDAYS[ymd(d)];
+  if (h) return { day: 'weekend', why: `공휴일(${h})` };
+  const w = d.getDay();
+  return (w === 0 || w === 6) ? { day: 'weekend', why: `${WEEKDAYS[w]}요일` } : { day: 'weekday', why: `${WEEKDAYS[w]}요일` };
+}
+// 작업 날짜: 기본은 오늘, 화면에서 바꿀 수 있음 (저장하지 않음)
+const REAL_TODAY = ymd(new Date());
+let workDate = new Date(), workAuto = autoDayType(workDate);
+state.dayType = workAuto.day;
+function renderToday(){
+  const isToday = ymd(workDate) === REAL_TODAY;
+  $('workDate').value = ymd(workDate);
+  $('todayText').textContent = `(${WEEKDAYS[workDate.getDay()]})`;
+  $('todayBack').style.display = isToday ? 'none' : '';
+  const wk = state.dayType === 'weekend';
+  $('todayTag').textContent = wk ? '주말/공휴일 요금 적용' : '평일 요금 적용';
+  $('todayTag').className = 'tag ' + (wk ? 'warn' : 'ok');
+  $('todayDay').value = state.dayType;
+}
+function refreshAll(){
+  renderToday();
+  state.rows.length && render1();
+  body2.length && computeFinal();
+}
+function setWorkDate(d){
+  workDate = d; workAuto = autoDayType(d);
+  state.dayType = workAuto.day; // 날짜를 바꾸면 요금 기준도 그 날짜로 다시 판단
+  refreshAll();
+}
+$('workDate').onchange = () => { const d = parseDate($('workDate').value); d ? setWorkDate(d) : renderToday(); };
+$('todayBack').onclick = () => setWorkDate(new Date());
+$('todayDay').onchange = () => { state.dayType = $('todayDay').value; refreshAll(); };
+renderToday();
+
+// 상품명 → 분류. 앞의 "[9월, 10월]" 같은 기간 표시와 공백은 무시하고 비교
+const PRODUCT_MAP = {
+  '관람(평일)09:00-18:00':        '네이버 평일 관람(09:00~18:00)',
+  '관람(평일)13:00-18:00':        '네이버 평일 관람(13:00~18:00)',
+  '관람(주말/공휴일)09:00-18:00': '네이버 주말/공휴일 관람(09:00~18:00)',
+  '관람(주말/공휴일)13:00-18:00': '네이버 주말/공휴일 관람(13:00~18:00)',
+};
+function classify(product){
+  const key = String(product || '').replace(/^\s*\[[^\]]*\]/, '').replace(/\s+/g, '');
+  if (PRODUCT_MAP[key]) return PRODUCT_MAP[key];
+  // 표에 없는 상품은 이름으로 추정
+  const p = String(product || '');
+  const day = /주말|휴일|공휴|토|일\)/.test(p) && !/평일/.test(p) ? '주말/공휴일' : /평일/.test(p) ? '평일' : '';
+  const t = p.match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
+  if (!t) return p.trim();
+  const hm = (h, m) => `${String(Number(h)).padStart(2, '0')}:${m}`;
+  return `네이버 ${day ? day + ' ' : ''}관람(${hm(t[1], t[2])}~${hm(t[3], t[4])})`;
+}
+// 분류명에서 오전/오후 · 평일/주말 판단 (시작 시각 12시 전이면 오전)
+const slotPart = slot => { const m = String(slot).match(/\((\d{1,2}):\d{2}/); return m ? (Number(m[1]) < 12 ? 'am' : 'pm') : /오후/.test(slot) ? 'pm' : 'am'; };
+const slotDay = slot => /주말|공휴/.test(slot) ? 'weekend' : /평일/.test(slot) ? 'weekday' : null;
+
+/* ---------- 1단계: 네이버 텍스트 파싱 ---------- */
+const NAME_LABEL = /(?:예약자명?|예매자|이름|성함|성명)\s*[:：]?\s*([가-힣]{2,5}|[A-Za-z][A-Za-z ]{1,20})/;
+const VISITOR_LABEL = /(?:방문자|실\s*방문자|이용자|실\s*이용자)\s*(?:명|이름|정보|성함)?\s*[:：]?\s*([가-힣]{2,5})/;
+const ADULT_RE = /(성인|대인|어른|일반)\s*(?:\([^)]*\))?[^\d\n]{0,6}(\d{1,3})/g;
+const STUDENT_RE = /(학생|청소년|어린이|소인|아동|초등|중학생|고등학생|대학생|중고생)\s*(?:\([^)]*\))?[^\d\n]{0,6}(\d{1,3})/g;
+
+function sumMatches(re, text){ let s = 0, m; re.lastIndex = 0; while ((m = re.exec(text))) s += Number(m[2]); return s; }
+
+// 탭으로 구분된 표(머리글 포함)를 붙여넣은 경우
+function parseTable(text){
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const hi = lines.findIndex(l => l.includes('\t') && /(예약자|예매자|이름|성명)/.test(l) && /(전화|연락처|휴대폰)/.test(l));
+  if (hi < 0) return null;
+  const h = lines[hi].split('\t').map(s => s.trim());
+  const find = re => h.findIndex(x => re.test(x));
+  const ci = { name: find(/예약자|예매자|이름|성명/), phone: find(/전화|연락처|휴대폰/), adult: find(/성인|대인|어른|일반/), student: find(/학생|청소년|어린이|소인|아동/), visitor: find(/방문자|이용자/), vphone: find(/방문자.*(전화|연락처)|이용자.*(전화|연락처)/) };
+  return lines.slice(hi + 1).map(l => {
+    const c = l.split('\t');
+    const r = { name: (c[ci.name] || '').trim(), phone: fmtPhone(c[ci.phone]), adult: ci.adult >= 0 ? num(c[ci.adult]) : 0, student: ci.student >= 0 ? num(c[ci.student]) : 0, note: '' };
+    if (ci.visitor >= 0 && c[ci.visitor]?.trim() && c[ci.visitor].trim() !== r.name) {
+      const vp = ci.vphone >= 0 && ci.vphone !== ci.visitor ? fmtPhone(c[ci.vphone]) : '';
+      r.note = vp ? `${c[ci.visitor].trim()}(${vp})` : c[ci.visitor].trim();
+    }
+    return r;
+  }).filter(r => r.name || r.phone);
+}
+
+// 자유 형식 텍스트: 예약 1건 단위로 나눈 뒤 각 블록에서 추출
+function splitBlocks(text){
+  let blocks = text.split(/\n(?=\s*(?:예약번호|No\.?\s*\d|\d{9,}))/);
+  if (blocks.length <= 1) blocks = text.split(/\n\s*\n+/);
+  // 블록 하나에 전화번호가 3개 이상이면 줄 단위 레코드로 간주
+  if (blocks.length <= 1) {
+    const phones = text.match(PHONE_RE) || [];
+    if (phones.length > 2) blocks = text.split(/\r?\n/);
+  }
+  return blocks.map(b => b.trim()).filter(b => /01[016789][\s.\-]?\d{3,4}[\s.\-]?\d{4}/.test(b));
+}
+
+function parseBlock(b){
+  PHONE_RE.lastIndex = 0;
+  const phones = [...b.matchAll(PHONE_RE)].map(m => fmtPhone(m[0]));
+  const uniq = [...new Set(phones)];
+  let name = (b.match(NAME_LABEL) || [])[1] || '';
+  if (!name) {
+    // 라벨이 없으면 첫 전화번호 앞의 한글 이름(2~4자)
+    const before = b.slice(0, b.search(/01[016789]/));
+    const cand = before.match(/[가-힣]{2,4}/g) || [];
+    name = cand.filter(w => !/(예약|확정|대기|취소|오전|오후|관람|성인|학생|입장|이용|방문|결제|완료|네이버|사유원)/.test(w)).pop() || '';
+  }
+  const adult = sumMatches(ADULT_RE, b);
+  const student = sumMatches(STUDENT_RE, b);
+  let note = '';
+  const visitor = (b.match(VISITOR_LABEL) || [])[1];
+  if (visitor && visitor !== name) note = uniq[1] ? `${visitor}(${uniq[1]})` : visitor;
+  else if (uniq.length > 1) note = `(${uniq[1]})`;
+  return { name: name.trim(), phone: uniq[0] || '', adult, student, note };
+}
+
+// 네이버 예약 관리 화면 복사본: "확정 / 이름 / 신규예매|취소 N / 예매자<TAB>이름 / 전화번호<TAB>... / 수량 / 평일(성인) 2 / 결제상태..."
+const STATUS_LINE = /^(확정|완료|대기|미확정|취소|이용완료|노쇼|예약확정|예약대기)\s*$/;
+function parseNaverList(text){
+  const lines = text.split(/\r?\n/).map(l => l.trim());
+  const starts = [];
+  lines.forEach((l, i) => { if (STATUS_LINE.test(l) && lines.slice(i + 1, i + 5).some(x => /^예매자\s/.test(x))) starts.push(i); });
+  if (!starts.length) return null;
+  return starts.map((s, n) => {
+    const block = lines.slice(s, starts[n + 1] ?? lines.length);
+    const kv = {};
+    let inQty = false, adult = 0, student = 0;
+    for (const l of block) {
+      if (/^수량\s*$/.test(l)) { inQty = true; continue; }
+      const m = l.match(/^([^\t]+?)\t+(.*)$/);
+      if (m) { inQty = false; kv[m[1].trim()] = m[2].trim(); continue; }
+      if (inQty) {
+        const q = l.match(/^(.*?)\s*(\d+)\s*$/);
+        if (!q) continue;
+        if (/학생|청소년|어린이|소인|아동|초등|중학|고등|대학/.test(q[1])) student += Number(q[2]);
+        else adult += Number(q[2]);
+      }
+    }
+    // 대리예약이면 예매자 뒤에 "대리예약"이 붙어 나옴
+    const name = (kv['예매자'] || block[1] || '').replace(/\s*대리\s*예약\s*$/, '').trim();
+    let note = '';
+    // 대리예약: 방문자/이용자 항목이 있으면 비고에 이름(전화번호)
+    const vKey = Object.keys(kv).find(k => /방문자|이용자/.test(k) && !/(전화|연락처|휴대폰)/.test(k));
+    const vpKey = Object.keys(kv).find(k => /방문자|이용자/.test(k) && /(전화|연락처|휴대폰)/.test(k));
+    if (vKey || vpKey) {
+      const raw = vKey ? kv[vKey] : '';
+      const vPhoneIn = raw.match(/01[016789][\s.\-]?\d{3,4}[\s.\-]?\d{4}/);
+      const vName = raw.replace(vPhoneIn?.[0] || '', '').replace(/[()]/g, '').trim();
+      const vPhone = vpKey ? fmtPhone(kv[vpKey]) : vPhoneIn ? fmtPhone(vPhoneIn[0]) : '';
+      if (vName && vName !== name) note = vPhone ? `${vName}(${vPhone})` : vName;
+    }
+    return { slot: classify(kv['상품']), name, phone: fmtPhone(kv['전화번호']), adult, student, note, bookingNo: kv['예매번호'] || '', useDate: (d => d ? ymd(d) : '')(parseDate(kv['이용일'] || '')) };
+  });
+}
+
+function parseNaver(text){
+  if (!text.trim()) return [];
+  return parseNaverList(text) || parseTable(text) || splitBlocks(text).map(parseBlock);
+}
+
+const COLS1 = [['slot','분류'],['name','예매자'],['phone','전화번호'],['adult','성인수'],['student','학생수'],['note','실방문자']];
+function renderEditable(el, rows, onChange){
+  if (!rows.length) { el.innerHTML = `<div class="empty">${state.filter1 ? '이 관람권 예약이 없습니다.' : '예약을 찾지 못했습니다.'}</div>`; return; }
+  el.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>#</th>${COLS1.map(c=>`<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${
+    rows.map((r,i)=>`<tr><td>${i+1}</td>${COLS1.map(([k])=>`<td contenteditable data-i="${i}" data-k="${k}" class="${k==='adult'||k==='student'?'num':''}">${esc(r[k])}</td>`).join('')}</tr>`).join('')
+  }</tbody></table></div>`;
+  el.querySelectorAll('td[contenteditable]').forEach(td => td.onblur = () => {
+    const r = rows[td.dataset.i], k = td.dataset.k;
+    r[k] = (k === 'adult' || k === 'student') ? num(td.textContent) : td.textContent.trim();
+    onChange();
+  });
+}
+
+function render1(){
+  const sep = $('sep1').value === '\\t' ? '\t' : ',';
+  const head = $('hdr1').checked ? [COLS1.map(c => c[1])] : [];
+  // 분류 네모칸을 누르면 그 분류만 보기 (다시 누르거나 '전체'를 누르면 해제)
+  const shown = state.filter1 ? state.rows.filter(r => (r.slot || '(분류 없음)') === state.filter1) : state.rows;
+  $('out1').value = toLines(head.concat(shown.map(r => COLS1.map(([k]) => r[k]))), sep);
+  // 네모칸 순서는 항상 09~18 → 13~18 → 전체. 작업 날짜 요금의 두 관람권은 0건이어도 표시
+  const dayName = state.dayType === 'weekend' ? '주말/공휴일' : '평일';
+  const groups = new Map([`네이버 ${dayName} 관람(09:00~18:00)`, `네이버 ${dayName} 관람(13:00~18:00)`].map(k => [k, { n: 0, a: 0, s: 0 }]));
+  const total = { n: 0, a: 0, s: 0 };
+  for (const r of state.rows) {
+    const k = r.slot || '(분류 없음)';
+    if (!groups.has(k)) groups.set(k, { n: 0, a: 0, s: 0 });
+    for (const g of [groups.get(k), total]) { g.n++; g.a += r.adult; g.s += r.student; }
+  }
+  const ordered = [...groups.entries()].sort(([a], [b]) => (slotPart(a) === 'am' ? 0 : 1) - (slotPart(b) === 'am' ? 0 : 1));
+  $('stat1').innerHTML = [...ordered, ['전체', total]].map(([k, g]) => {
+    const on = k === '전체' ? !state.filter1 : state.filter1 === k;
+    return `<button type="button" class="stat" data-slot="${esc(k)}" style="cursor:pointer;text-align:left;font:inherit;color:inherit;border:2px solid ${on ? 'var(--accent)' : 'transparent'}"><b>${g.n}건 · ${g.a + g.s}명</b><span>${esc(k)} · 성인 ${g.a} / 학생 ${g.s}</span></button>`;
+  }).join('');
+  $('stat1').querySelectorAll('[data-slot]').forEach(b => b.onclick = () => {
+    const k = b.dataset.slot;
+    state.filter1 = (k === '전체' || state.filter1 === k) ? null : k;
+    render1();
+  });
+  // 오늘 날짜와 맞지 않는 예약 경고
+  const today = ymd(workDate), dayWord = state.dayType === 'weekend' ? '주말' : '평일';
+  const otherDate = state.rows.filter(r => r.useDate && r.useDate !== today);
+  const otherDay = state.rows.filter(r => slotDay(r.slot) && slotDay(r.slot) !== state.dayType);
+  const warns = [];
+  if (otherDate.length) warns.push(`이용일이 작업 날짜(${today})와 다른 예약 ${otherDate.length}건: ${[...new Set(otherDate.map(r => r.useDate))].join(', ')}`);
+  if (otherDay.length) warns.push(`작업 날짜는 ${dayWord} 요금인데 다른 상품인 예약 ${otherDay.length}건: ${otherDay.map(r => r.name).join(', ')}`);
+  $('warn1').innerHTML = warns.map(w => `<p class="hint" style="margin:10px 0 0"><span class="tag warn">확인 필요</span> ${esc(w)}</p>`).join('');
+  renderEditable($('tbl1'), shown, render1);
+  if (body2.length || state.manual) computeFinal(); // 1단계를 고치면 2단계 최종 인원도 다시 계산
+}
+// 붙여넣으면 바로 정리 (결과가 안 나오면 [정리하기]를 직접 누름)
+$('inAll').addEventListener('paste', () => setTimeout(() => $('inAll').value.trim() && $('btnParse').click(), 0));
+$('btnParse').onclick = () => {
+  state.rows = parseNaver($('inAll').value);
+  state.filter1 = null;
+  state.finalEdits = {}; // 명단이 바뀌면 2단계에서 고친 내용은 초기화
+  $('res1').style.display = '';
+  render1();
+};
+$('sep1').onchange = $('hdr1').onchange = () => $('res1').style.display !== 'none' && render1();
+
+/* ---------- 2단계: 환불 확인 ---------- */
+let sheetRows = null; // 2차원 배열
+const drop2 = $('drop2');
+drop2.onclick = () => $('file2').click();
+drop2.ondragover = e => { e.preventDefault(); drop2.classList.add('over'); };
+drop2.ondragleave = () => drop2.classList.remove('over');
+drop2.ondrop = e => { e.preventDefault(); drop2.classList.remove('over'); if (e.dataTransfer.files[0]) readSheet(e.dataTransfer.files[0]); };
+$('file2').onchange = e => e.target.files[0] && readSheet(e.target.files[0]);
+
+/* 암호 걸린 엑셀(Office Agile 암호화: AES + SHA-512) 풀기 — 브라우저 Web Crypto 사용 */
+const PW_KEY = 'sayuwon.xlsxPassword';
+try { $('pw2').value = localStorage.getItem(PW_KEY) || ''; } catch {}
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const concatBytes = (...arrs) => { const out = new Uint8Array(arrs.reduce((n, a) => n + a.length, 0)); let o = 0; for (const a of arrs) { out.set(a, o); o += a.length; } return out; };
+const u32le = n => new Uint8Array([n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]);
+const hashOf = (alg, data) => crypto.subtle.digest(alg, data).then(b => new Uint8Array(b));
+const fitLen = (h, n, pad = 0x36) => { const out = new Uint8Array(n).fill(pad); out.set(h.slice(0, n)); return out; };
+// 패딩 없는 AES-CBC 복호화 (Web Crypto는 PKCS7만 지원하므로 패딩 블록을 덧붙여 처리)
+async function aesCbcRaw(keyBytes, iv, data){
+  const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-CBC', false, ['encrypt', 'decrypt']);
+  const last = data.slice(data.length - 16);
+  const padBlock = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CBC', iv: last }, key, new Uint8Array(16).fill(16))).slice(0, 16);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CBC', iv }, key, concatBytes(data, padBlock)));
+}
+async function decryptXlsx(bytes, password){
+  const cfb = XLSX.CFB.read(bytes, { type: 'array' });
+  const info = XLSX.CFB.find(cfb, 'EncryptionInfo')?.content;
+  const pkg = XLSX.CFB.find(cfb, 'EncryptedPackage')?.content;
+  if (!info || !pkg) throw new Error('암호화된 엑셀 형식이 아닙니다');
+  if (!(info[0] === 4 && info[2] === 4)) throw new Error('지원하지 않는 암호화 방식입니다');
+  const xml = new DOMParser().parseFromString(new TextDecoder().decode(new Uint8Array(info).slice(8)), 'application/xml');
+  const kd = xml.getElementsByTagName('keyData')[0];
+  const ek = [...xml.getElementsByTagName('*')].find(e => e.localName === 'encryptedKey');
+  const alg = a => ({ SHA512: 'SHA-512', SHA384: 'SHA-384', SHA256: 'SHA-256', SHA1: 'SHA-1' })[a.getAttribute('hashAlgorithm')];
+  const hAlg = alg(ek), keyLen = Number(ek.getAttribute('keyBits')) / 8, spin = Number(ek.getAttribute('spinCount'));
+  // 비밀번호 → 키 (spinCount 만큼 반복 해시)
+  const pwBytes = new Uint8Array(password.length * 2);
+  for (let i = 0; i < password.length; i++) { const c = password.charCodeAt(i); pwBytes[i*2] = c & 255; pwBytes[i*2+1] = c >> 8; }
+  let h = await hashOf(hAlg, concatBytes(b64(ek.getAttribute('saltValue')), pwBytes));
+  for (let i = 0; i < spin; i++) h = await hashOf(hAlg, concatBytes(u32le(i), h));
+  const blockKey = async bk => fitLen(await hashOf(hAlg, concatBytes(h, new Uint8Array(bk))), keyLen);
+  const pwSalt = b64(ek.getAttribute('saltValue'));
+  // 비밀번호 확인
+  const vIn = (await aesCbcRaw(await blockKey([0xfe,0xa7,0xd2,0x76,0x3b,0x4b,0x9e,0x79]), pwSalt, b64(ek.getAttribute('encryptedVerifierHashInput')))).slice(0, 16);
+  const vHash = await aesCbcRaw(await blockKey([0xd7,0xaa,0x0f,0x6d,0x30,0x61,0x34,0x4e]), pwSalt, b64(ek.getAttribute('encryptedVerifierHashValue')));
+  const expect = await hashOf(hAlg, vIn);
+  if (expect.some((b, i) => b !== vHash[i])) throw new Error('비밀번호가 맞지 않습니다');
+  const secret = (await aesCbcRaw(await blockKey([0x14,0x6e,0x0b,0xe7,0xab,0xac,0xd0,0xd6]), pwSalt, b64(ek.getAttribute('encryptedKeyValue')))).slice(0, Number(kd.getAttribute('keyBits')) / 8);
+  // 본문: 4096바이트 단위로 복호화
+  const data = new Uint8Array(pkg), size = data[0] | data[1] << 8 | data[2] << 16 | data[3] * 16777216;
+  const kdSalt = b64(kd.getAttribute('saltValue')), kdAlg = alg(kd), parts = [];
+  for (let off = 8, seg = 0; off < data.length; off += 4096, seg++) {
+    const iv = fitLen(await hashOf(kdAlg, concatBytes(kdSalt, u32le(seg))), 16);
+    parts.push(await aesCbcRaw(secret, iv, data.slice(off, Math.min(off + 4096, data.length))));
+  }
+  return concatBytes(...parts).slice(0, size);
+}
+const isEncrypted = bytes => { try { return !!XLSX.CFB.find(XLSX.CFB.read(bytes, { type: 'array' }), 'EncryptedPackage'); } catch { return false; } };
+
+async function readSheet(file){
+  const label = $('drop2Label');
+  try {
+    let bytes = new Uint8Array(await file.arrayBuffer());
+    if (isEncrypted(bytes)) {
+      const pw = $('pw2').value;
+      if (!pw) { toast('엑셀 비밀번호를 입력해 주세요'); $('pw2').focus(); label.textContent = '비밀번호를 입력한 뒤 파일을 다시 넣어 주세요'; return; }
+      label.textContent = '암호를 푸는 중…';
+      bytes = await decryptXlsx(bytes, pw);
+      try { $('pwKeep2').checked ? localStorage.setItem(PW_KEY, pw) : localStorage.removeItem(PW_KEY); } catch {}
+    }
+    const wb = XLSX.read(bytes, { type: 'array', cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    sheetRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false, dateNF: 'yyyy-mm-dd' });
+    label.textContent = `📄 ${file.name} · ${sheetRows.length}행 불러옴 (다른 파일은 다시 끌어다 놓기)`;
+    $('in2').value = '';
+    runCheck();
+  } catch (e) {
+    label.textContent = `⚠️ ${e.message} — 다시 시도해 주세요`;
+    toast(e.message);
+  }
+}
+
+const COL_RULES = {
+  booking: [/예약\s*번호|예매\s*번호|주문\s*번호/, '예약번호'],
+  name:   [/예약자|예매자|이름|성명/, '예약자'],
+  phone:  [/전화|연락처|휴대폰/, '전화번호'],
+  paid:   [/실\s*결제|결제\s*금액|결제액/, '실결제금액'],
+  refund: [/환불\s*금액|환불액|환불/, '환불금액'],
+  date:   [/이용\s*일|방문\s*일|관람\s*일|이용\s*일시|예약\s*일시|날짜/, '이용일'],
+  ticket: [/상품|관람권|옵션|권종/, '상품명'],
+};
+// 네이버 예약자관리 엑셀의 실제 열 이름 (정확히 같은 이름을 먼저 찾고, 없으면 COL_RULES로 추정)
+const NAVER_COLS = { booking: '예약번호', name: '예매자', phone: '전화번호', paid: '실결제금액', refund: '환불금액', date: '이용일', ticket: '상품' };
+function detectCols(header){
+  const map = {};
+  for (const [k, [re]] of Object.entries(COL_RULES)) {
+    const exact = header.findIndex(h => String(h).trim() === NAVER_COLS[k]);
+    if (exact >= 0) { map[k] = exact; continue; }
+    let idx = header.findIndex(h => re.test(String(h)));
+    if (k === 'paid' && idx >= 0 && /환불/.test(header[idx])) idx = header.findIndex(h => re.test(String(h)) && !/환불/.test(h));
+    map[k] = idx;
+  }
+  return map;
+}
+// 열 선택 칸은 평소에 숨겨 두고 [엑셀 열 인식 수정하기]를 누를 때만 펼침
+$('btnColmap').onclick = () => { const box = $('colmap2'); box.style.display = box.style.display === 'none' ? '' : 'none'; };
+function renderColMap(header, map){
+  const box = $('colmap2'); $('btnColmap').style.display = '';
+  box.innerHTML = Object.entries(COL_RULES).map(([k,[,label]]) =>
+    `<label class="chk">${label}<select data-col="${k}"><option value="-1">(없음)</option>${header.map((h,i)=>`<option value="${i}" ${map[k]===i?'selected':''}>${esc(h)}</option>`).join('')}</select></label>`).join('');
+  box.querySelectorAll('select').forEach(s => s.onchange = () => { colMap[s.dataset.col] = Number(s.value); compute2(); });
+}
+
+function parseDate(v){
+  // "2026. 10. 21.", "2026-10-21", "26. 10. 21.(수)" 모두 지원
+  const m = String(v).match(/(\d{4}|\d{2})[.\-\/년]\s*(\d{1,2})[.\-\/월]\s*(\d{1,2})/);
+  if (m) return new Date(Number(m[1].length === 2 ? '20' + m[1] : m[1]), Number(m[2]) - 1, Number(m[3]));
+  const m2 = String(v).match(/(\d{1,2})[.\/월]\s*(\d{1,2})/);
+  if (m2) return new Date(new Date().getFullYear(), Number(m2[1]) - 1, Number(m2[2]));
+  return null;
+}
+/* 관람권 가격: [저장]을 눌러 확인하면 이 브라우저의 기본값이 됨 */
+const DEFAULT_PRICES = { weekday: { adult: 50000, student: 45000 }, weekend: { adult: 69000, student: 62000 } };
+const PRICE_KEY = 'sayuwon.prices';
+const DAY_LABEL = { weekday: '평일', weekend: '주말' };
+let prices = loadPrices();
+function loadPrices(){
+  try { const p = JSON.parse(localStorage.getItem(PRICE_KEY)); if (p?.weekday?.adult && p?.weekend?.adult) return p; } catch {}
+  return structuredClone(DEFAULT_PRICES);
+}
+const priceInputs = [...document.querySelectorAll('[data-price]')];
+const priceLabel = key => { const [d, k] = key.split('.'); return `${DAY_LABEL[d]} ${k === 'adult' ? '성인' : '학생'}`; };
+function renderPrices(){
+  priceInputs.forEach(i => { const [d, k] = i.dataset.price.split('.'); i.value = prices[d][k]; i.style.borderColor = ''; });
+  $('priceSave').disabled = true;
+}
+// 입력만 바꾼 상태에서는 계산에 쓰지 않고, 바뀐 칸만 표시
+priceInputs.forEach(i => i.oninput = () => {
+  const [d, k] = i.dataset.price.split('.');
+  i.style.borderColor = num(i.value) !== prices[d][k] ? 'var(--warn)' : '';
+  $('priceSave').disabled = !priceInputs.some(x => x.style.borderColor);
+});
+function applyPrices(next){
+  prices = next;
+  try { localStorage.setItem(PRICE_KEY, JSON.stringify(prices)); } catch {}
+  renderPrices();
+  body2.length && computeFinal();
+  toast('관람권 가격을 저장했습니다');
+}
+$('priceSave').onclick = () => {
+  const next = structuredClone(prices);
+  const changes = [];
+  for (const i of priceInputs) {
+    const [d, k] = i.dataset.price.split('.'), v = num(i.value);
+    if (!v) { toast(`${priceLabel(i.dataset.price)} 가격을 입력해 주세요`); return; }
+    if (v !== prices[d][k]) { changes.push(`${priceLabel(i.dataset.price)}: ${won(prices[d][k])}원 → ${won(v)}원`); next[d][k] = v; }
+  }
+  if (!changes.length) return;
+  if (!confirm(`정말 변경하시겠습니까?\n\n${changes.join('\n')}\n\n저장하면 앞으로 이 가격이 기본값이 됩니다.`)) { renderPrices(); return; }
+  applyPrices(next);
+};
+$('priceReset').onclick = () => {
+  const d = DEFAULT_PRICES;
+  if (!confirm(`정말 변경하시겠습니까?\n\n처음 가격으로 되돌립니다.\n평일 성인 ${won(d.weekday.adult)}원 · 평일 학생 ${won(d.weekday.student)}원\n주말 성인 ${won(d.weekend.adult)}원 · 주말 학생 ${won(d.weekend.student)}원`)) return;
+  applyPrices(structuredClone(DEFAULT_PRICES));
+};
+renderPrices();
+
+// 환불금액 = 성인취소×성인가 + 학생취소×학생가 가 되는 조합 (예약 인원 안에서)
+function solveCancel(refund, p, maxA = Infinity, maxS = Infinity){
+  const out = [];
+  if (!p.adult || !p.student) return out;
+  for (let a = 0; a * p.adult <= refund && a <= maxA; a++) {
+    const rest = refund - a * p.adult;
+    if (rest % p.student === 0 && rest / p.student <= maxS) out.push({ a, s: rest / p.student });
+  }
+  return out;
+}
+
+// 부분취소 1건의 평일/주말과 취소 조합을 정함. row는 맞춰진 1단계 예약(없으면 undefined)
+function resolveRefund(f, row){
+  if (f.kind !== 'partial') return;
+  f.day = state.dayType;
+  f.sols = row ? solveCancel(f.refund, prices[f.day], row.origAdult, row.origStudent) : solveCancel(f.refund, prices[f.day]);
+  if (!(f.solIdx < f.sols.length)) f.solIdx = 0;
+  f.flag = !f.sols.length ? '금액에 맞는 인원 조합 없음' : f.sols.length > 1 ? `가능한 조합 ${f.sols.length}개 · 선택 필요` : '';
+}
+const solText = s => [s.a ? `성인 ${s.a}` : '', s.s ? `학생 ${s.s}` : ''].filter(Boolean).join(' · ') || '0명';
+
+let colMap = {}, header2 = [], body2 = [];
+function runCheck(){
+  let rows = sheetRows;
+  if ($('in2').value.trim()) rows = $('in2').value.split(/\r?\n/).filter(l => l.trim()).map(l => l.split('\t'));
+  if (!rows || !rows.length) { toast('엑셀 파일이나 붙여넣은 표가 없습니다'); return; }
+  const hi = rows.findIndex(r => r.some(c => /환불/.test(c)));
+  if (hi < 0) { toast('"환불금액" 머리글을 찾지 못했습니다'); return; }
+  header2 = rows[hi].map(h => String(h).trim());
+  body2 = rows.slice(hi + 1).filter(r => r.some(c => String(c).trim()));
+  colMap = detectCols(header2);
+  renderColMap(header2, colMap);
+  compute2();
+}
+$('btnCheck').onclick = runCheck;
+
+function compute2(){
+  // ① 환불금액이 있는 예약만 후보로 추림
+  const candidates = body2.filter(r => num(r[colMap.refund]) > 0);
+  // ② 후보 각각을 전액환불 / 부분취소로 판단
+  state.finalEdits = {};
+  state.manual = false;
+  state.refunds = candidates.map(r => {
+    const paid = num(r[colMap.paid]), refund = num(r[colMap.refund]);
+    return { bookingNo: colMap.booking >= 0 ? digits(r[colMap.booking]) : '', name: String(r[colMap.name] ?? '').trim(), phone: fmtPhone(r[colMap.phone]), date: colMap.date >= 0 ? r[colMap.date] : '',
+      paid, refund, kind: paid === refund ? 'full' : 'partial', solIdx: 0 };
+  });
+  computeFinal();
+}
+
+// 오류 버튼: 엑셀 반영이 잘 안 될 때 1단계 표를 그대로 최종 인원으로 불러와 직접 고침
+$('btnManual').onclick = () => {
+  if (!state.rows.length) { toast('1단계 정리 결과가 없습니다'); go(1); return; }
+  state.manual = true;
+  state.finalEdits = {};
+  computeFinal();
+  $('res3').scrollIntoView({ behavior: 'smooth' });
+};
+
+/* ---------- 최종 인원 (1단계 명단 + 환불 결과) ---------- */
+function computeFinal(){
+  const src = state.rows;
+  const refunds = state.manual ? [] : state.refunds; // 오류 모드면 환불 반영 없이 1단계 표 그대로
+  const matched = new Map(); // 환불 index → 맞춰진 최종 행
+  state.final = src.map(r => {
+    const out = { ...r, origAdult: r.adult, origStudent: r.student, status: 'ok', memo: '' };
+    const pd = digits(r.phone), bn = digits(r.bookingNo);
+    let ri = bn ? refunds.findIndex((f,i) => !matched.has(i) && f.bookingNo === bn) : -1;
+    if (ri < 0) ri = refunds.findIndex((f,i) => !matched.has(i) && pd && digits(f.phone) === pd);
+    if (ri < 0) ri = refunds.findIndex((f,i) => !matched.has(i) && f.name && f.name === r.name);
+    if (ri >= 0) matched.set(ri, out);
+    return out;
+  });
+  refunds.forEach((f, i) => resolveRefund(f, matched.get(i)));
+  for (const [i, out] of matched) {
+    const f = refunds[i];
+    if (f.kind === 'full') { out.status = 'full'; out.adult = 0; out.student = 0; out.memo = '전액환불'; continue; }
+    if (!f.sols.length) { out.status = 'warn'; out.memo = '환불금액에 맞는 인원 조합 없음'; continue; }
+    const s = f.sols[f.solIdx];
+    out.adult -= s.a; out.student -= s.s;
+    out.status = f.sols.length > 1 ? 'warn' : 'partial';
+    out.memo = `부분취소 ${solText(s)}`;
+    if (f.sols.length > 1) out.refIdx = i; // 가능한 조합이 여러 개면 표에서 고르게 함
+  }
+  // 최종 인원 표에서 직접 고친 값은 다시 계산해도 유지
+  state.final.forEach((out, i) => { if (state.finalEdits[i]) { Object.assign(out, state.finalEdits[i]); out.edited = true; } });
+  state.unmatched = refunds.filter((_, i) => !matched.has(i));
+  renderFinal();
+}
+
+const COLS3 = [['slot','분류'],['name','예매자'],['phone','전화번호'],['adult','성인'],['student','학생']];
+function renderFinal(){
+  const refunds = state.refunds, unmatched = state.manual ? [] : (state.unmatched || []);
+  if (!state.rows.length) {
+    $('res3').style.display = '';
+    $('stat3').innerHTML = ''; $('tbl3').innerHTML = '<div class="empty">1단계 명단이 비어 있습니다. 1단계에서 예약 텍스트를 먼저 정리해 주세요.</div>';
+    $('unmatched3').innerHTML = ''; $('out3').value = '';
+    return;
+  }
+  $('res3').style.display = '';
+  const live = state.final.filter(r => r.status !== 'full');
+  const sum = (rows, k) => rows.reduce((s,r)=>s+r[k],0);
+  const slots = [...new Set(live.map(r => r.slot))];
+  const bySlot = s => live.filter(r => r.slot === s);
+  $('stat3').innerHTML = [
+    ...slots.map(s => [`${s || '(분류 없음)'} 성인/학생`, `${sum(bySlot(s),'adult')} / ${sum(bySlot(s),'student')}`]),
+    ['총 방문 인원', sum(live,'adult') + sum(live,'student') + '명'],
+    ['부분취소 반영', state.final.filter(r=>r.status==='partial'||r.status==='warn').length + '건'],
+  ].map(([l,v]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
+  const tag = { ok:['정상','ok'], full:['제외','bad'], partial:['차감','warn'], warn:['확인 필요','bad'] };
+  const cell = (r, i, k) => `<td contenteditable data-i="${i}" data-k="${k}" class="${k==='adult'||k==='student'?'num':''}">${esc(r[k])}</td>`;
+  $('tbl3').innerHTML = (state.manual
+      ? `<p class="hint" style="margin:10px 0 0"><span class="tag bad">오류 모드</span> 1단계 정리 결과를 그대로 불러왔습니다. 환불·취소 인원을 표에서 직접 고쳐 주세요. 엑셀을 다시 넣고 [확인하기]를 누르면 자동 계산으로 돌아갑니다.</p>`
+      : `<p class="hint" style="margin:10px 0 0">표의 칸은 클릭해서 바로 고칠 수 있고, 고친 내용은 3단계 일괄등록에 반영됩니다.</p>`) + `
+    <div class="tbl-wrap"><table><thead><tr>${COLS3.map(c => `<th class="${c[0]==='adult'||c[0]==='student'?'num':''}">${c[1]}</th>`).join('')}<th class="num">합계</th><th>실방문자</th><th>상태</th></tr></thead><tbody>${
+    // 전액환불된 예약은 최종 인원 표에서 뺌 (위 요약에 건수만 표시)
+    state.final.map((r, i) => r.status === 'full' ? '' : `<tr>${COLS3.map(([k]) => cell(r, i, k)).join('')}
+      <td class="num">${r.adult + r.student}</td>${cell(r, i, 'note')}
+      <td><span class="tag ${tag[r.status][1]}">${tag[r.status][0]}</span> ${r.refIdx !== undefined && !r.edited
+        ? `<select data-sol="${r.refIdx}">${refunds[r.refIdx].sols.map((s,j) => `<option value="${j}" ${refunds[r.refIdx].solIdx===j?'selected':''}>부분취소 ${solText(s)}</option>`).join('')}</select>`
+        : `<span class="hint">${esc([r.memo, r.edited ? '직접 수정함' : ''].filter(Boolean).join(' · '))}</span>`}</td></tr>`).join('')
+  }</tbody></table></div>`;
+  $('tbl3').querySelectorAll('select[data-sol]').forEach(s => s.onchange = () => {
+    refunds[s.dataset.sol].solIdx = Number(s.value);
+    computeFinal();
+  });
+  $('tbl3').querySelectorAll('td[contenteditable]').forEach(td => td.onblur = () => {
+    const i = Number(td.dataset.i), k = td.dataset.k, r = state.final[i];
+    const v = (k === 'adult' || k === 'student') ? num(td.textContent) : td.textContent.trim();
+    if (v === r[k]) return;
+    r[k] = v; r.edited = true;
+    (state.finalEdits[i] ||= {})[k] = v;
+    renderFinal();
+  });
+  // 전액환불(이미 취소된 예약)은 1단계 명단에 없는 게 정상 → 안내만, 부분취소가 빠졌으면 경고
+  const lostPartial = unmatched.filter(u => u.kind === 'partial'), goneFull = unmatched.filter(u => u.kind === 'full');
+  $('unmatched3').innerHTML =
+    (lostPartial.length ? `<p class="hint" style="margin-top:12px"><span class="tag warn">확인 필요</span> 1단계 명단에서 찾지 못한 부분취소 ${lostPartial.length}건: ${lostPartial.map(u => esc(`${u.name} ${u.phone}`)).join(', ')}</p>` : '') +
+    (goneFull.length ? `<p class="hint" style="margin-top:8px"><span class="tag mute">참고</span> 1단계 명단에 없는 전액환불 ${goneFull.length}건 (이미 취소된 예약): ${goneFull.map(u => esc(u.name)).join(', ')}</p>` : '');
+  $('out3').value = toLines([['분류','예매자','전화번호','성인수','학생수','실방문자']].concat(live.map(r => [r.slot, r.name, r.phone, r.adult, r.student, r.note])), ',');
+}
+
+/* ---------- 3단계: 일괄등록 (분류·인원이 같은 예약끼리 한 칸) ---------- */
+function renderBulk(){
+  // 2단계 최종 인원을 그대로 사용
+  const src = state.final.filter(r => r.status !== 'full' && r.adult + r.student > 0);
+  if (!src.length) {
+    $('stat4').innerHTML = '';
+    $('groups4').innerHTML = '<div class="card"><div class="empty">2단계 최종 인원이 없습니다. 2단계에서 엑셀을 넣어 최종 인원을 먼저 만들어 주세요.</div></div>';
+    return;
+  }
+  // 대리예약(실방문자가 있는 예약)은 따로 입력하므로 일괄등록 칸에서 뺌
+  const proxies = src.filter(r => String(r.note || '').trim());
+  const groups = new Map();
+  for (const r of src.filter(r => !String(r.note || '').trim())) {
+    const key = `${r.slot}|${r.adult}|${r.student}`;
+    if (!groups.has(key)) groups.set(key, { slot: r.slot, adult: r.adult, student: r.student, rows: [] });
+    groups.get(key).rows.push([r.name, fmtPhone(r.phone)]);
+  }
+  const list = [...groups.values()].sort((a, b) => String(a.slot).localeCompare(String(b.slot), 'ko') || a.adult - b.adult || a.student - b.student);
+  $('stat4').innerHTML = '';
+
+  // 1열 오전권(09:00 시작), 2열 오후권(13:00 시작)
+  let n = 0;
+  const box = g => { const i = n++; return `
+    <div class="card">
+      <h3>${esc(g.slot)}</h3>
+      <p class="hint" style="margin:0 0 8px">${[g.adult ? `성인 ${g.adult}` : '', g.student ? `학생 ${g.student}` : ''].filter(Boolean).join(' · ')} · ${g.rows.length}건</p>
+      <textarea class="out" id="bulk${i}" readonly style="min-height:${Math.min(60 + g.rows.length * 20, 240)}px">${esc(toLines(g.rows, ','))}</textarea>
+      <div class="row" style="margin-bottom:0"><button class="btn ghost" data-copy="bulk${i}">복사</button></div>
+    </div>`; };
+  // 열 제목 옆 인원: 그 관람권의 전체 방문 인원 (대리예약 포함)
+  const count = part => {
+    const rs = src.filter(r => slotPart(r.slot) === part), a = rs.reduce((s, r) => s + r.adult, 0), st = rs.reduce((s, r) => s + r.student, 0);
+    return `<span class="hint" style="font-weight:400">(성인 ${a}명, 학생 ${st}명, 총 ${a + st}명)</span>`;
+  };
+  const col = (title, part) => {
+    const gs = list.filter(g => slotPart(g.slot) === part);
+    return `<div><h3 style="margin:0 0 10px">${title} ${count(part)}</h3>${gs.length ? gs.map(box).join('') : '<div class="card"><div class="empty">없음</div></div>'}</div>`;
+  };
+  $('groups4').innerHTML = `<div class="grid2">${col('오전권', 'am')}${col('오후권', 'pm')}</div>` +
+    (proxies.length ? `<div class="card">
+      <h2>대리예약 · 별도입력</h2>
+      <div class="tbl-wrap"><table><thead><tr><th>#</th>${COLS1.map(([k, l]) => `<th class="${k==='adult'||k==='student'?'num':''}">${l}</th>`).join('')}</tr></thead><tbody>${
+        proxies.map((r, i) => `<tr><td>${i + 1}</td>${COLS1.map(([k]) => `<td class="${k==='adult'||k==='student'?'num':''}">${esc(r[k])}</td>`).join('')}</tr>`).join('')
+      }</tbody></table></div></div>` : '');
+}
+document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { go(b.dataset.go); window.scrollTo(0, 0); });
+</script>
+</body>
+</html>
