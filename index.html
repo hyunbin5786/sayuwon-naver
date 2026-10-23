@@ -183,11 +183,27 @@ function toLines(rows, sep){ return rows.map(r => r.map(c => csvCell(c, sep)).jo
 document.querySelectorAll('#nav button[data-s]').forEach(b => b.onclick = () => go(b.dataset.s));
 // 리셋: 붙여넣은 텍스트·엑셀·결과를 모두 지우고 처음 화면으로 (가격·엑셀 비밀번호는 유지)
 $('btnReset').onclick = () => {
-  if (!confirm('붙여넣은 텍스트, 엑셀, 정리 결과를 모두 지우고 처음부터 시작할까요?\n(관람권 가격과 엑셀 비밀번호는 그대로 유지됩니다)')) return;
-  // 새로고침 때 브라우저가 입력칸 내용을 되살리지 않도록 먼저 비움
-  document.querySelectorAll('textarea').forEach(t => t.value = '');
-  location.reload();
+  if (!confirm('붙여넣은 텍스트, 엑셀, 정리 결과를 모두 지우고 처음부터 시작할까요?\n(저장한 관람권 가격과 기억한 엑셀 비밀번호는 그대로 유지됩니다)')) return;
+  resetAll();
 };
+// 새로고침에 기대지 않고 화면과 데이터를 직접 비움 (브라우저가 입력값을 되살리는 경우가 있어서)
+function resetAll(){
+  Object.assign(state, { rows: [], refunds: [], final: [], finalEdits: {}, unmatched: [], manual: false, filter1: null });
+  sheetRows = null; header2 = []; body2 = []; colMap = {};
+  document.querySelectorAll('textarea').forEach(t => t.value = '');
+  $('file2').value = '';
+  $('drop2Label').textContent = '엑셀 파일을 끌어다 놓거나 클릭해서 선택';
+  document.querySelectorAll('#s2 details').forEach(d => d.open = false);
+  $('colmap2').innerHTML = ''; $('colmap2').style.display = 'none'; $('btnColmap').style.display = 'none';
+  for (const id of ['stat1', 'warn1', 'tbl1', 'stat3', 'tbl3', 'unmatched3', 'stat4', 'groups4']) $(id).innerHTML = '';
+  $('res1').style.display = 'none'; $('res3').style.display = 'none';
+  $('sep1').value = ','; $('hdr1').checked = false;
+  renderPrices();                 // 저장하지 않은 가격 입력은 저장된 값으로 되돌림
+  try { $('pw2').value = localStorage.getItem(PW_KEY) || ''; } catch { $('pw2').value = ''; }
+  setWorkDate(new Date());        // 작업 날짜·요금 기준은 오늘로
+  go(1); window.scrollTo(0, 0);
+  toast('모두 지웠습니다');
+}
 function go(n){
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.s === String(n)));
   document.querySelectorAll('main section').forEach(s => s.classList.toggle('on', s.id === 's' + n));
