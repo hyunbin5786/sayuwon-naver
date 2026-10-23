@@ -1,0 +1,9 @@
+# 예약자 개인정보가 들어 있는 시험용 파일은 절대 올리지 않음
+*.xlsx
+*.xls
+*.csv
+*.txt
+.local-test/
+
+# Claude 작업 설정
+.claude/
