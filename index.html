@@ -701,7 +701,10 @@ function renderFinal(){
   $('res3').style.display = '';
   const live = state.final.filter(r => r.status !== 'full');
   const sum = (rows, k) => rows.reduce((s,r)=>s+r[k],0);
-  const slots = [...new Set(live.map(r => r.slot))];
+  // 1단계와 같이 09~18 → 13~18 순서, 작업 날짜 요금의 두 관람권은 0명이어도 표시
+  const dayName = state.dayType === 'weekend' ? '주말/공휴일' : '평일';
+  const slots = [...new Set([`네이버 ${dayName} 관람(09:00~18:00)`, `네이버 ${dayName} 관람(13:00~18:00)`, ...live.map(r => r.slot)])]
+    .sort((a, b) => (slotPart(a) === 'am' ? 0 : 1) - (slotPart(b) === 'am' ? 0 : 1));
   const bySlot = s => live.filter(r => r.slot === s);
   $('stat3').innerHTML = [
     ...slots.map(s => [`${s || '(분류 없음)'} 성인/학생`, `${sum(bySlot(s),'adult')} / ${sum(bySlot(s),'student')}`]),
