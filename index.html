@@ -338,6 +338,7 @@ function parseNaverList(text){
     const block = lines.slice(s, starts[n + 1] ?? lines.length);
     const kv = {};
     let inQty = false, adult = 0, student = 0;
+    const unknownQty = [];
     for (const l of block) {
       if (/^수량\s*$/.test(l)) { inQty = true; continue; }
       const m = l.match(/^([^\t]+?)\t+(.*)$/);
@@ -345,10 +346,10 @@ function parseNaverList(text){
       if (inQty) {
         const q = l.match(/^(.*?)\s*(\d+)\s*$/);
         if (!q) continue;
-        // "전체 4" 같은 합계 줄은 세지 않음 (성인·학생 줄과 겹쳐 두 번 세게 됨)
-        if (/^(전체|합계|총)/.test(q[1].trim())) continue;
-        if (/학생|청소년|어린이|소인|아동|초등|중학|고등|대학/.test(q[1])) student += Number(q[2]);
-        else adult += Number(q[2]);
+        // 권종은 성인·학생 두 가지뿐: "(성인)"은 성인수, "(학생)"은 학생수. "전체 4" 같은 합계 줄 등 나머지는 세지 않음
+        if (/성인/.test(q[1])) adult += Number(q[2]);
+        else if (/학생/.test(q[1])) student += Number(q[2]);
+        else if (!/^(전체|합계|총)/.test(q[1].trim())) unknownQty.push(l.trim());
       }
     }
     // 대리예약이면 예매자 뒤에 "대리예약"이 붙어 나옴
@@ -364,7 +365,7 @@ function parseNaverList(text){
       const vPhone = vpKey ? fmtPhone(kv[vpKey]) : vPhoneIn ? fmtPhone(vPhoneIn[0]) : '';
       if (vName && vName !== name) note = vPhone ? `${vName}(${vPhone})` : vName;
     }
-    return { slot: classify(kv['상품']), name, phone: fmtPhone(kv['전화번호']), adult, student, note, bookingNo: kv['예매번호'] || '', useDate: (d => d ? ymd(d) : '')(parseDate(kv['이용일'] || '')) };
+    return { slot: classify(kv['상품']), name, phone: fmtPhone(kv['전화번호']), adult, student, note, unknownQty, bookingNo: kv['예매번호'] || '', useDate: (d => d ? ymd(d) : '')(parseDate(kv['이용일'] || '')) };
   });
 }
 
@@ -418,6 +419,8 @@ function render1(){
   const warns = [];
   if (otherDate.length) warns.push(`이용일이 작업 날짜(${today})와 다른 예약 ${otherDate.length}건: ${[...new Set(otherDate.map(r => r.useDate))].join(', ')}`);
   if (otherDay.length) warns.push(`작업 날짜는 ${dayWord} 요금인데 다른 상품인 예약 ${otherDay.length}건: ${otherDay.map(r => r.name).join(', ')}`);
+  const oddQty = state.rows.filter(r => r.unknownQty?.length);
+  if (oddQty.length) warns.push(`성인·학생이 아닌 수량 줄이 있어 세지 않은 예약 ${oddQty.length}건: ${oddQty.map(r => `${r.name}(${r.unknownQty.join(', ')})`).join(', ')}`);
   $('warn1').innerHTML = warns.map(w => `<p class="hint" style="margin:10px 0 0"><span class="tag warn">확인 필요</span> ${esc(w)}</p>`).join('');
   renderEditable($('tbl1'), shown, render1);
   if (body2.length || state.manual) computeFinal(); // 1단계를 고치면 2단계 최종 인원도 다시 계산
