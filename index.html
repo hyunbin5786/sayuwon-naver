@@ -345,6 +345,8 @@ function parseNaverList(text){
       if (inQty) {
         const q = l.match(/^(.*?)\s*(\d+)\s*$/);
         if (!q) continue;
+        // "전체 4" 같은 합계 줄은 세지 않음 (성인·학생 줄과 겹쳐 두 번 세게 됨)
+        if (/^(전체|합계|총)/.test(q[1].trim())) continue;
         if (/학생|청소년|어린이|소인|아동|초등|중학|고등|대학/.test(q[1])) student += Number(q[2]);
         else adult += Number(q[2]);
       }
