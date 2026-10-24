@@ -161,6 +161,13 @@ input[type=checkbox],select,input[type=date]{cursor:pointer}
       <button class="btn ghost" id="btnManual" style="border-color:var(--bad);color:var(--bad)">오류 · 1단계 표로 직접 수정</button>
       <button class="btn ghost" id="btnColmap" style="display:none">엑셀 열 인식 수정하기</button>
       <button class="btn ghost" id="btnPrices">관람권 가격 수정하기</button>
+      <button class="btn ghost" id="btnCap">최대 인원 수정</button>
+    </div>
+    <div class="row" id="cap2" style="display:none">
+      <b style="font-size:14px">관람권별 최대 인원</b>
+      <label class="chk">오전권 <input type="number" min="1" step="1" data-cap="am" style="width:80px">명</label>
+      <label class="chk">오후권 <input type="number" min="1" step="1" data-cap="pm" style="width:80px">명</label>
+      <button class="btn" id="capSave">저장</button>
     </div>
     <div class="row" id="colmap2" style="display:none"></div>
   </div>
@@ -213,7 +220,7 @@ function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add(
 function csvCell(v, sep){ v = String(v ?? ''); return sep === ',' && /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; }
 function toLines(rows, sep){ return rows.map(r => r.map(c => csvCell(c, sep)).join(sep)).join('\n'); }
 
-document.querySelectorAll('#nav button[data-s]').forEach(b => b.onclick = () => go(b.dataset.s));
+document.querySelectorAll('#nav button[data-s]').forEach(b => b.onclick = () => b.dataset.s === '4' ? goStep3() : go(b.dataset.s));
 // 리셋: 붙여넣은 텍스트·엑셀·결과를 모두 지우고 처음 화면으로 (가격·엑셀 비밀번호는 유지)
 $('btnReset').onclick = () => {
   askConfirm('지금까지 입력한 내용을 모두 지우고 처음부터 시작할까요?\n\n붙여넣은 텍스트, 엑셀, 정리 결과, 직접 고친 내용이 모두 사라집니다.\n(저장한 관람권 가격과 기억한 엑셀 비밀번호는 그대로 유지됩니다)', '모두 지우기')
@@ -860,7 +867,8 @@ function renderFinal(){
     return `<button type="button" class="stat" data-slot3="${esc(key ?? '')}" style="cursor:pointer;text-align:left;font:inherit;color:inherit;border:2px solid ${on ? 'var(--accent)' : 'transparent'}"><b>${value}</b><span>${label}</span></button>`;
   };
   $('stat3').innerHTML = [
-    ...slots.map(s => box(s, `${slotShort(s, slots)} · 성인 ${sum(bySlot(s),'adult')} / 학생 ${sum(bySlot(s),'student')}`, `${sum(bySlot(s),'adult') + sum(bySlot(s),'student')}명`)),
+    ...slots.map(s => { const n = sum(bySlot(s),'adult') + sum(bySlot(s),'student'), cap = capacity[slotPart(s)];
+      return box(s, `${slotShort(s, slots)} · 성인 ${sum(bySlot(s),'adult')} / 학생 ${sum(bySlot(s),'student')}`, n > cap ? `<span style="color:var(--bad)">${n}명 · 최대 ${cap}명 초과</span>` : `${n}명`); }),
     box(null, `총 방문 인원 · 성인 ${sum(live,'adult')} / 학생 ${sum(live,'student')}`, sum(live,'adult') + sum(live,'student') + '명'),
     `<div class="stat"><b>${state.final.filter(r=>r.status==='partial'||r.status==='warn').length}건</b><span>부분취소 반영</span></div>`,
     `<div class="stat"><b style="color:var(--bad)">${state.final.filter(r=>r.inputErr).length}건</b><span>입력오류 (엑셀 기준 점검)</span></div>`,
@@ -993,7 +1001,76 @@ function renderReview(){
 }
 $('onlyTodo5').onchange = renderReview;
 
-document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { go(b.dataset.go); window.scrollTo(0, 0); });
+document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === '4' ? goStep3() : (go(b.dataset.go), window.scrollTo(0, 0)));
+
+/* ---------- 관람권별 최대 인원 (기본 오전권·오후권 각 50명, 바꾸면 이 컴퓨터의 기본값이 됨) ---------- */
+const CAP_KEY = 'sayuwon.capacity', DEFAULT_CAP = { am: 50, pm: 50 };
+let capacity = (() => { try { const c = JSON.parse(localStorage.getItem(CAP_KEY)); if (c?.am > 0 && c?.pm > 0) return c; } catch {} return { ...DEFAULT_CAP }; })();
+function saveCapacity(next){
+  capacity = next;
+  try { localStorage.setItem(CAP_KEY, JSON.stringify(capacity)); } catch {}
+  renderCap();
+  if (state.final.length) renderFinal();
+}
+function renderCap(){ document.querySelectorAll('[data-cap]').forEach(i => i.value = capacity[i.dataset.cap]); }
+renderCap();
+$('btnCap').onclick = () => { const box = $('cap2'), open = box.style.display === 'none'; box.style.display = open ? '' : 'none'; if (!open) renderCap(); };
+$('capSave').onclick = () => {
+  const next = { am: num(document.querySelector('[data-cap="am"]').value), pm: num(document.querySelector('[data-cap="pm"]').value) };
+  if (!(next.am > 0 && next.pm > 0)) { toast('최대 인원을 1명 이상으로 입력해 주세요'); return; }
+  if (next.am === capacity.am && next.pm === capacity.pm) return;
+  askConfirm(`정말 변경하시겠습니까?\n\n오전권 ${capacity.am}명 → ${next.am}명\n오후권 ${capacity.pm}명 → ${next.pm}명\n\n저장하면 앞으로 이 인원이 기본값이 됩니다.`, '변경')
+    .then(ok => { if (ok) { saveCapacity(next); toast('최대 인원을 저장했습니다'); } else renderCap(); });
+};
+// 2단계 최종 인원의 오전권·오후권 합계 (전액환불 제외)
+function partTotals(){
+  const t = { am: 0, pm: 0 };
+  for (const r of state.final) if (r.status !== 'full') t[slotPart(r.slot)] += r.adult + r.student;
+  return t;
+}
+const PART_NAME = { am: '오전권', pm: '오후권' };
+
+// 3단계로 갈 때 최대 인원 초과 점검
+function goStep3(){
+  const t = partTotals(), over = ['am', 'pm'].filter(p => state.final.length && t[p] > capacity[p]);
+  if (!over.length) { go(4); window.scrollTo(0, 0); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'modal';
+  wrap.innerHTML = `<div class="modal-box" role="dialog" aria-modal="true">
+    <p style="margin:0 0 6px;font-weight:700;color:var(--bad)">최대 인원을 넘었습니다</p>
+    <p style="margin:0 0 14px">${over.map(p => `${PART_NAME[p]} 최종 인원 <b>${t[p]}명</b> (최대 ${capacity[p]}명)`).join('<br>')}<br><br>인원 입력이 잘못된 것인지 확인해 주세요.</p>
+    <div data-step="cap" style="display:none;margin:0 0 14px">
+      ${['am', 'pm'].map(p => `<label class="chk" style="margin-right:12px">${PART_NAME[p]} <input type="number" min="1" data-newcap="${p}" value="${Math.max(capacity[p], t[p])}" style="width:80px">명</label>`).join('')}
+    </div>
+    <div class="row" style="justify-content:flex-end;margin:0">
+      <button class="btn ghost" data-a="check">오류 점검</button><button class="btn" data-a="cap">최대 인원 수정</button>
+    </div></div>`;
+  const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  wrap.onclick = e => {
+    if (e.target === wrap) return close();
+    const a = e.target.dataset?.a;
+    if (a === 'check') {
+      // 2단계 표에서 직접 고치도록: 넘은 관람권만 보이게 하고 표로 이동
+      close(); go(2);
+      const slot = state.final.find(r => r.status !== 'full' && slotPart(r.slot) === over[0])?.slot;
+      if (slot) { state.filter3 = slot; renderFinal(); }
+      $('res3').scrollIntoView({ behavior: 'smooth' });
+      toast(`${PART_NAME[over[0]]} 인원을 표에서 확인하고 고친 뒤 [저장하기]를 눌러 주세요`);
+    } else if (a === 'cap') {
+      const step = wrap.querySelector('[data-step="cap"]');
+      if (step.style.display === 'none') { // 처음 누르면 입력칸을 보여 주고, 다시 누르면 저장 후 3단계로
+        step.style.display = ''; e.target.textContent = '저장하고 3단계로'; step.querySelector('input').focus(); return;
+      }
+      const next = { am: num(wrap.querySelector('[data-newcap="am"]').value), pm: num(wrap.querySelector('[data-newcap="pm"]').value) };
+      if (!(next.am > 0 && next.pm > 0)) { toast('최대 인원을 1명 이상으로 입력해 주세요'); return; }
+      close(); saveCapacity(next); toast('최대 인원을 저장했습니다');
+      go(4); window.scrollTo(0, 0);
+    }
+  };
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(wrap);
+}
 
 /* 저장하기: 고치던 칸을 확정하고(blur) 다시 계산해 다음 단계로 넘김. 칸을 고치면 바로 반영되는 기존 동작은 그대로 */
 // 포커스가 빠지지 않아 반영이 안 된 칸이 있을 수 있으므로, 표의 모든 칸 글자를 직접 읽어서 반영
@@ -1026,6 +1103,8 @@ const TIPS = {
   save3: '표에서 고친 내용을 저장하고 3·4단계에 반영',
   priceSave: '바꾼 가격을 저장 (앞으로 기본값이 됨)',
   priceReset: '처음 가격(50,000 / 45,000 / 69,000 / 62,000)으로 되돌리기',
+  btnCap: '오전권·오후권 최대 인원 칸 열기/닫기',
+  capSave: '바꾼 최대 인원을 저장 (앞으로 기본값이 됨)',
 };
 function tipFor(el){
   if (el.id && TIPS[el.id]) return TIPS[el.id];
