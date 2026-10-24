@@ -239,7 +239,7 @@ function askConfirm(message, okLabel = '확인'){
 }
 // 새로고침에 기대지 않고 화면과 데이터를 직접 비움 (브라우저가 입력값을 되살리는 경우가 있어서)
 function resetAll(){
-  Object.assign(state, { rows: [], refunds: [], final: [], finalEdits: {}, unmatched: [], manual: false, filter1: null, filter3: null, sort1: null, sort3: null, checks: {}, excel: new Map() });
+  Object.assign(state, { rows: [], refunds: [], final: [], finalEdits: {}, unmatched: [], manual: false, filter1: null, filter3: null, sort1: null, sort3: null, checks: {}, excel: new Map(), filter5: null });
   $('onlyTodo5').checked = false; $('stat5').innerHTML = ''; $('tbl5').innerHTML = '';
   sheetRows = null; header2 = []; body2 = []; colMap = {};
   document.querySelectorAll('textarea').forEach(t => t.value = '');
@@ -971,12 +971,20 @@ function renderReview(){
   state.checks ||= {};
   const done = src.filter(r => state.checks[reviewKey(r)]);
   const people = rows => rows.reduce((s, r) => s + r.adult + r.student, 0);
-  $('stat5').innerHTML = [
-    ['전체', `${src.length}건 · ${people(src)}명`],
-    ['등록 완료', `${done.length}건 · ${people(done)}명`],
-    ['미등록', `${src.length - done.length}건 · ${people(src) - people(done)}명`],
-  ].map(([l, v]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
-  const rows = $('onlyTodo5').checked ? src.filter(r => !state.checks[reviewKey(r)]) : src;
+  // 오전권 / 오후권 / 전체 버튼: 누르면 그 관람권만 보면서 따로 체크 (각 버튼에 등록 진행 상황 표시)
+  const isDone = r => !!state.checks[reviewKey(r)];
+  const partBtn = (key, label) => {
+    const rs = key ? src.filter(r => slotPart(r.slot) === key) : src, d = rs.filter(isDone).length;
+    const on = (state.filter5 || null) === key;
+    return `<button type="button" class="stat" data-part5="${key || ''}" style="cursor:pointer;text-align:left;font:inherit;color:inherit;min-width:150px;border:2px solid ${on ? 'var(--accent)' : 'transparent'}">
+      <b>${label}</b><span>등록 ${d} / ${rs.length}건 · 미등록 <b style="display:inline;font-size:inherit;color:${rs.length - d ? 'var(--bad)' : 'var(--ok)'}">${rs.length - d}</b>건</span></button>`;
+  };
+  const view = state.filter5 ? src.filter(r => slotPart(r.slot) === state.filter5) : src;
+  const viewDone = view.filter(isDone);
+  $('stat5').innerHTML = partBtn('am', '오전권') + partBtn('pm', '오후권') + partBtn(null, '전체') +
+    `<div class="stat"><b>${people(viewDone)} / ${people(view)}명</b><span>${state.filter5 === 'am' ? '오전권' : state.filter5 === 'pm' ? '오후권' : '전체'} 등록 완료 인원</span></div>`;
+  $('stat5').querySelectorAll('[data-part5]').forEach(b => b.onclick = () => { state.filter5 = b.dataset.part5 || null; renderReview(); });
+  const rows = $('onlyTodo5').checked ? view.filter(r => !isDone(r)) : view;
   $('tbl5').innerHTML = rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>#</th>${COLS1.map(([k, l]) => `<th class="${k==='adult'||k==='student'?'num':''}">${l}</th>`).join('')}<th style="text-align:center">등록</th></tr></thead><tbody>${
     rows.map((r, i) => { const on = !!state.checks[reviewKey(r)]; return `<tr style="${on ? 'opacity:.55' : ''}"><td>${i + 1}</td>${COLS1.map(([k]) => `<td class="${k==='adult'||k==='student'?'num':''}">${esc(r[k])}</td>`).join('')}
       <td style="text-align:center"><input type="checkbox" data-key="${esc(reviewKey(r))}" ${on ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer"></td></tr>`; }).join('')
@@ -1028,6 +1036,7 @@ function tipFor(el){
   if (d.sort) return '누를 때마다 ▲ 적은 인원부터 → ▼ 많은 인원부터 → ↕ 원래 순서';
   if (d.slot !== undefined || d.slot3 !== undefined) return (d.slot === '전체' || d.slot3 === '') ? '전체 예약 보기' : '이 관람권 예약만 보기 (다시 누르면 전체)';
   if (d.key) return '시스템에 등록했으면 체크';
+  if (d.part5 !== undefined) return d.part5 === 'am' ? '오전권 예약만 보고 체크' : d.part5 === 'pm' ? '오후권 예약만 보고 체크' : '전체 예약 보기';
   if (d.sol) return '환불금액에 맞는 인원 조합 중 실제 취소된 것을 고르기';
   if (el.id === 'drop2') return '클릭하거나 끌어다 놓아 엑셀 파일 넣기';
   if (el.matches('td[contenteditable]')) return '클릭해서 직접 고치기';
