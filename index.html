@@ -888,7 +888,7 @@ function renderBulk(){
   // 칸 제목은 핵심인 인원·건수를 크게. 분류명은 같은 열에 평일·주말이 섞였을 때만 작게 표시
   const box = (g, showSlot) => { const i = n++; return `
     <div class="card">
-      <div style="font-size:22px;font-weight:700;margin:0 0 8px">${[g.adult ? `성인 ${g.adult}` : '', g.student ? `학생 ${g.student}` : ''].filter(Boolean).join(' · ')} <span style="color:var(--accent)">· ${g.rows.length}건</span></div>
+      <div style="font-size:17px;font-weight:700;margin:0 0 8px">${[g.adult ? `성인 ${g.adult}` : '', g.student ? `학생 ${g.student}` : ''].filter(Boolean).join(' · ')} <span style="color:var(--accent)">· ${g.rows.length}건</span></div>
       ${showSlot ? `<p class="hint" style="margin:-4px 0 8px">${esc(g.slot)}</p>` : ''}
       <textarea class="out" id="bulk${i}" readonly style="min-height:${Math.min(60 + g.rows.length * 20, 240)}px">${esc(toLines(g.rows, ','))}</textarea>
       <div class="row" style="margin-bottom:0"><button class="btn ghost" data-copy="bulk${i}">복사</button></div>
