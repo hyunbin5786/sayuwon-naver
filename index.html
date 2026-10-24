@@ -704,12 +704,20 @@ function computeFinal(){
   const src = state.rows;
   const refunds = state.manual ? [] : state.refunds; // 오류 모드면 환불 반영 없이 1단계 표 그대로
   const matched = new Map(); // 환불 index → 맞춰진 최종 행
+  // 1단계에서 확인된 예약만 검증: 전액환불(이미 취소된 예약)은 보지 않고 부분취소만 반영
+  const usable = (f, i) => !matched.has(i) && f.kind === 'partial';
+  const hasBookingCol = refunds.some(f => f.bookingNo);
   state.final = src.map(r => {
     const out = { ...r, origAdult: r.adult, origStudent: r.student, status: 'ok', memo: '' };
     const pd = digits(r.phone), bn = digits(r.bookingNo);
-    let ri = bn ? refunds.findIndex((f,i) => !matched.has(i) && f.bookingNo === bn) : -1;
-    if (ri < 0) ri = refunds.findIndex((f,i) => !matched.has(i) && pd && digits(f.phone) === pd);
-    if (ri < 0) ri = refunds.findIndex((f,i) => !matched.has(i) && f.name && f.name === r.name);
+    let ri;
+    if (bn && hasBookingCol) {
+      // 예매번호가 양쪽에 있으면 예매번호로만 맞춤 (이름이 같은 다른 예약과 섞이지 않도록)
+      ri = refunds.findIndex((f, i) => usable(f, i) && f.bookingNo === bn);
+    } else {
+      ri = refunds.findIndex((f, i) => usable(f, i) && pd && digits(f.phone) === pd);
+      if (ri < 0) ri = refunds.findIndex((f, i) => usable(f, i) && f.name && f.name === r.name);
+    }
     if (ri >= 0) matched.set(ri, out);
     return out;
   });
@@ -777,11 +785,8 @@ function renderFinal(){
     (state.finalEdits[i] ||= {})[k] = v;
     renderFinal();
   });
-  // 전액환불(이미 취소된 예약)은 1단계 명단에 없는 게 정상 → 안내만, 부분취소가 빠졌으면 경고
-  const lostPartial = unmatched.filter(u => u.kind === 'partial'), goneFull = unmatched.filter(u => u.kind === 'full');
-  $('unmatched3').innerHTML =
-    (lostPartial.length ? `<p class="hint" style="margin-top:12px"><span class="tag warn">확인 필요</span> 1단계 명단에서 찾지 못한 부분취소 ${lostPartial.length}건: ${lostPartial.map(u => esc(`${u.name} ${u.phone}`)).join(', ')}</p>` : '') +
-    (goneFull.length ? `<p class="hint" style="margin-top:8px"><span class="tag mute">참고</span> 1단계 명단에 없는 전액환불 ${goneFull.length}건 (이미 취소된 예약): ${goneFull.map(u => esc(u.name)).join(', ')}</p>` : '');
+  // 1단계 명단에 없는 예약의 환불은 관심 대상이 아니므로 따로 표시하지 않음
+  $('unmatched3').innerHTML = '';
   $('out3').value = toLines([['분류','예매자','전화번호','성인수','학생수','실방문자']].concat(live.map(r => [r.slot, r.name, r.phone, r.adult, r.student, r.note])), ',');
 }
 
