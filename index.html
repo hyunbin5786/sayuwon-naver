@@ -814,7 +814,11 @@ function renderFinal(){
     renderFinal();
   });
   // 표에 보일 행: 전액환불 제외 → 관람권 필터 → 인원 정렬 (i는 state.final의 원래 위치)
-  const view = sortRows(state.final.map((r, i) => ({ r, i })).filter(({ r }) => r.status !== 'full' && (!state.filter3 || r.slot === state.filter3)), state.sort3, x => x.r);
+  // 기본 순서(정렬 버튼을 안 눌렀을 때): 부분취소 → 확인 필요 → 미환불, 같은 상태끼리는 입력 순서
+  const statusRank = { partial: 0, warn: 1, ok: 2 };
+  const base = state.final.map((r, i) => ({ r, i })).filter(({ r }) => r.status !== 'full' && (!state.filter3 || r.slot === state.filter3))
+    .sort((a, b) => (statusRank[a.r.status] ?? 3) - (statusRank[b.r.status] ?? 3));
+  const view = sortRows(base, state.sort3, x => x.r);
   const tag = { ok:['미환불','ok'], full:['제외','bad'], partial:['부분취소','yellow'], warn:['확인 필요','bad'] };
   const cell = (r, i, k) => `<td contenteditable data-i="${i}" data-k="${k}" class="${k==='adult'||k==='student'?'num':''}">${esc(r[k])}</td>`;
   $('tbl3').innerHTML = (state.manual
