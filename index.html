@@ -125,12 +125,12 @@ input[type=checkbox],select,input[type=date]{cursor:pointer}
     </div>
   </div>
   <div class="card" id="res1" style="display:none">
-    <h2>정리 결과</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h2 style="margin:0">정리 결과</h2><button class="btn" id="save1">저장하기</button></div>
     <p class="hint">표의 칸은 클릭해서 바로 고칠 수 있고, 고친 내용은 아래 텍스트와 다음 단계에 반영됩니다.</p>
     <div class="stats" id="stat1"></div>
     <div id="warn1"></div>
     <div id="tbl1"></div>
-    <div class="row"><button class="btn" id="save1">저장하기</button><button class="btn ghost" data-copy="out1">결과 복사</button></div>
+    <div class="row"><button class="btn ghost" data-copy="out1">결과 복사</button></div>
     <textarea class="out" id="out1" readonly style="min-height:200px"></textarea>
   </div>
   <div class="row" style="justify-content:flex-end"><button class="btn" data-go="2">2단계로 이동 →</button></div>
@@ -165,11 +165,11 @@ input[type=checkbox],select,input[type=date]{cursor:pointer}
     <div class="row" id="colmap2" style="display:none"></div>
   </div>
   <div class="card" id="res3" style="display:none">
-    <h2>최종 인원</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><h2 style="margin:0">최종 인원</h2><button class="btn" id="save3">저장하기</button></div>
     <div class="stats" id="stat3"></div>
     <div id="tbl3"></div>
     <div id="unmatched3"></div>
-    <div class="row"><button class="btn" id="save3">저장하기</button><button class="btn ghost" data-copy="out3">최종 명단 복사</button></div>
+    <div class="row"><button class="btn ghost" data-copy="out3">최종 명단 복사</button></div>
     <textarea class="out" id="out3" readonly></textarea>
   </div>
   <div class="row" style="justify-content:flex-end"><button class="btn" data-go="4">3단계로 가기 →</button></div>
