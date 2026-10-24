@@ -130,7 +130,7 @@ input[type=checkbox],select,input[type=date]{cursor:pointer}
     <div class="stats" id="stat1"></div>
     <div id="warn1"></div>
     <div id="tbl1"></div>
-    <div class="row"><button class="btn ghost" data-copy="out1">결과 복사</button></div>
+    <div class="row"><button class="btn" id="save1">저장하기</button><button class="btn ghost" data-copy="out1">결과 복사</button></div>
     <textarea class="out" id="out1" readonly style="min-height:200px"></textarea>
   </div>
   <div class="row" style="justify-content:flex-end"><button class="btn" data-go="2">2단계로 이동 →</button></div>
@@ -169,7 +169,7 @@ input[type=checkbox],select,input[type=date]{cursor:pointer}
     <div class="stats" id="stat3"></div>
     <div id="tbl3"></div>
     <div id="unmatched3"></div>
-    <div class="row"><button class="btn ghost" data-copy="out3">최종 명단 복사</button></div>
+    <div class="row"><button class="btn" id="save3">저장하기</button><button class="btn ghost" data-copy="out3">최종 명단 복사</button></div>
     <textarea class="out" id="out3" readonly></textarea>
   </div>
   <div class="row" style="justify-content:flex-end"><button class="btn" data-go="4">3단계로 가기 →</button></div>
@@ -239,7 +239,7 @@ function askConfirm(message, okLabel = '확인'){
 }
 // 새로고침에 기대지 않고 화면과 데이터를 직접 비움 (브라우저가 입력값을 되살리는 경우가 있어서)
 function resetAll(){
-  Object.assign(state, { rows: [], refunds: [], final: [], finalEdits: {}, unmatched: [], manual: false, filter1: null, filter3: null, sort1: null, sort3: null, checks: {} });
+  Object.assign(state, { rows: [], refunds: [], final: [], finalEdits: {}, unmatched: [], manual: false, filter1: null, filter3: null, sort1: null, sort3: null, checks: {}, excel: new Map() });
   $('onlyTodo5').checked = false; $('stat5').innerHTML = ''; $('tbl5').innerHTML = '';
   sheetRows = null; header2 = []; body2 = []; colMap = {};
   document.querySelectorAll('textarea').forEach(t => t.value = '');
@@ -457,6 +457,7 @@ const sortBtn = (s, k) => `<button type="button" class="sortbtn" data-sort="${k}
 function nextSort(s, k){ return s?.k !== k ? { k, dir: 'asc' } : s.dir === 'asc' ? { k, dir: 'desc' } : { k: null }; }
 
 function renderEditable(el, rows, onChange){
+  el._rows = rows; // [저장하기]가 칸 위치 → 예약을 찾을 때 사용
   if (!rows.length) { el.innerHTML = `<div class="empty">${state.filter1 ? '이 관람권 예약이 없습니다.' : '예약을 찾지 못했습니다.'}</div>`; return; }
   el.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>#</th>${COLS1.map(([k, l]) => `<th class="${k==='adult'||k==='student'?'num':''}">${l}${k==='adult'||k==='student' ? sortBtn(state.sort1, k) : ''}</th>`).join('')}</tr></thead><tbody>${
     rows.map((r,i)=>`<tr><td>${i+1}</td>${COLS1.map(([k])=>`<td contenteditable data-i="${i}" data-k="${k}" class="${k==='adult'||k==='student'?'num':''}">${esc(r[k])}</td>`).join('')}</tr>`).join('')
@@ -741,7 +742,40 @@ function compute2(){
     return { bookingNo: colMap.booking >= 0 ? digits(r[colMap.booking]) : '', name: String(r[colMap.name] ?? '').trim(), phone: fmtPhone(r[colMap.phone]), date: colMap.date >= 0 ? r[colMap.date] : '',
       paid, refund, kind: paid === refund ? 'full' : 'partial', solIdx: 0 };
   });
+  // ③ 1단계 정보 점검용: 엑셀의 모든 예약을 예매번호로 기억 (예매자·전화번호·성인/학생 수량·결제금액)
+  const qtyCols = header2.map((h, i) => ({ h, i })).filter(({ h }) => /\((성인|학생)\)\s*$/.test(h)); // "가격분류1-평일(성인)" 등, "… 결제금액" 열은 제외
+  state.excel = new Map();
+  for (const r of body2) {
+    const bn = colMap.booking >= 0 ? digits(r[colMap.booking]) : '';
+    if (!bn) continue;
+    let adult = null, student = null;
+    if (qtyCols.length) { adult = 0; student = 0; for (const { h, i } of qtyCols) /성인/.test(h) ? adult += num(r[i]) : student += num(r[i]); }
+    state.excel.set(bn, { name: String(r[colMap.name] ?? '').replace(/\s*대리\s*예약\s*$/, '').trim(), phone: digits(r[colMap.phone]), adult, student, paid: num(r[colMap.paid]) });
+  }
   computeFinal();
+}
+
+// 1단계 정보를 엑셀(예매번호가 같은 줄) 기준으로 점검하고, 틀린 것은 엑셀 값으로 고침. 고친 내용을 돌려줌
+function checkAgainstExcel(out, ex){
+  const fixes = [];
+  if (ex.name && ex.name !== out.name) { fixes.push(`예매자 ${out.name}→${ex.name}`); out.name = ex.name; }
+  if (ex.phone) {
+    const mine = digits(out.phone);
+    if (ex.phone.length >= 10) { if (ex.phone !== mine) { fixes.push(`전화번호 ${out.phone}→${fmtPhone(ex.phone)}`); out.phone = fmtPhone(ex.phone); } }
+    else if (!mine.endsWith(ex.phone.slice(-4))) fixes.push(`전화번호 뒷자리가 엑셀(…${ex.phone.slice(-4)})과 다름`); // 엑셀은 앞자리가 가려져 있어 고칠 수 없음
+  }
+  // 인원: 엑셀 수량 열 기준, 수량 열이 없으면 결제금액으로 계산 (조합이 하나일 때만)
+  const p = prices[slotDay(out.slot) || state.dayType];
+  let a = ex.adult, s = ex.student;
+  if (a == null && ex.paid) { const sols = solveCancel(ex.paid, p); if (sols.length === 1) ({ a, s } = sols[0]); }
+  if (a != null && (a !== out.adult || s !== out.student)) {
+    if (a !== out.adult) fixes.push(`성인 ${out.adult}→${a}`);
+    if (s !== out.student) fixes.push(`학생 ${out.student}→${s}`);
+    out.adult = out.origAdult = a; out.student = out.origStudent = s;
+  }
+  // 금액 점검: 인원 × 관람권 가격이 엑셀 결제금액과 다르면 알려 줌 (고치지는 않음)
+  if (a != null && ex.paid && a * p.adult + s * p.student !== ex.paid) fixes.push(`금액 확인 필요 (엑셀 ${won(ex.paid)}원 / 인원×가격 ${won(a * p.adult + s * p.student)}원)`);
+  return fixes;
 }
 
 // 오류 버튼: 엑셀 반영이 잘 안 될 때 1단계 표를 그대로 최종 인원으로 불러와 직접 고침
@@ -764,6 +798,9 @@ function computeFinal(){
   state.final = src.map(r => {
     const out = { ...r, origAdult: r.adult, origStudent: r.student, status: 'ok', memo: '' };
     const pd = digits(r.phone), bn = digits(r.bookingNo);
+    // 엑셀 기준 점검 (부분취소 계산 전에 원래 인원부터 바로잡음)
+    const ex = !state.manual && bn && state.excel?.get(bn);
+    if (ex) { const fixes = checkAgainstExcel(out, ex); if (fixes.length) out.inputErr = fixes; }
     let ri;
     if (bn && hasBookingCol) {
       // 예매번호가 양쪽에 있으면 예매번호로만 맞춤 (이름이 같은 다른 예약과 섞이지 않도록)
@@ -819,6 +856,7 @@ function renderFinal(){
     ...slots.map(s => box(s, `${s || '(분류 없음)'} · 성인 ${sum(bySlot(s),'adult')} / 학생 ${sum(bySlot(s),'student')}`, `${sum(bySlot(s),'adult') + sum(bySlot(s),'student')}명`)),
     box(null, `총 방문 인원 · 성인 ${sum(live,'adult')} / 학생 ${sum(live,'student')}`, sum(live,'adult') + sum(live,'student') + '명'),
     `<div class="stat"><b>${state.final.filter(r=>r.status==='partial'||r.status==='warn').length}건</b><span>부분취소 반영</span></div>`,
+    `<div class="stat"><b style="color:var(--bad)">${state.final.filter(r=>r.inputErr).length}건</b><span>입력오류 (엑셀 기준 점검)</span></div>`,
   ].join('');
   $('stat3').querySelectorAll('[data-slot3]').forEach(b => b.onclick = () => {
     const k = b.dataset.slot3 || null;
@@ -827,9 +865,11 @@ function renderFinal(){
   });
   // 표에 보일 행: 전액환불 제외 → 관람권 필터 → 인원 정렬 (i는 state.final의 원래 위치)
   // 기본 순서(정렬 버튼을 안 눌렀을 때): 부분취소 → 확인 필요 → 미환불, 같은 상태끼리는 입력 순서
+  // 입력오류가 있는 줄을 가장 위에, 그다음 부분취소 → 확인 필요 → 미환불
   const statusRank = { partial: 0, warn: 1, ok: 2 };
+  const rank = r => (r.inputErr ? 0 : 1) * 10 + (statusRank[r.status] ?? 3);
   const base = state.final.map((r, i) => ({ r, i })).filter(({ r }) => r.status !== 'full' && (!state.filter3 || r.slot === state.filter3))
-    .sort((a, b) => (statusRank[a.r.status] ?? 3) - (statusRank[b.r.status] ?? 3));
+    .sort((a, b) => rank(a.r) - rank(b.r));
   const view = sortRows(base, state.sort3, x => x.r);
   const tag = { ok:['미환불','ok'], full:['제외','bad'], partial:['부분취소','yellow'], warn:['확인 필요','bad'] };
   const cell = (r, i, k) => `<td contenteditable data-i="${i}" data-k="${k}" class="${k==='adult'||k==='student'?'num':''}">${esc(r[k])}</td>`;
@@ -839,7 +879,7 @@ function renderFinal(){
     <div class="tbl-wrap"><table><thead><tr>${COLS3.map(([k, l]) => `<th class="${k==='adult'||k==='student'?'num':''}">${l}${k==='adult'||k==='student' ? sortBtn(state.sort3, k) : ''}</th>`).join('')}<th class="num">합계${sortBtn(state.sort3, 'total')}</th><th>실방문자</th><th>상태</th></tr></thead><tbody>${
     view.length ? view.map(({ r, i }) => `<tr>${COLS3.map(([k]) => cell(r, i, k)).join('')}
       <td class="num">${r.adult + r.student}</td>${cell(r, i, 'note')}
-      <td><span class="tag ${tag[r.status][1]}">${tag[r.status][0]}</span> ${r.refIdx !== undefined && !r.edited
+      <td>${r.inputErr ? `<span class="tag bad">입력오류</span> <span class="hint" style="color:var(--bad)">엑셀 기준 수정: ${esc(r.inputErr.join(', '))}</span><br>` : ''}<span class="tag ${tag[r.status][1]}">${tag[r.status][0]}</span> ${r.refIdx !== undefined && !r.edited
         ? `<select data-sol="${r.refIdx}">${refunds[r.refIdx].sols.map((s,j) => `<option value="${j}" ${refunds[r.refIdx].solIdx===j?'selected':''}>${changeText(r.origAdult, r.origStudent, s)}</option>`).join('')}</select>`
         : `<span class="hint">${esc([r.memo, r.edited ? '직접 수정함' : ''].filter(Boolean).join(' · '))}</span>`}</td></tr>`).join('')
       : `<tr><td colspan="9" class="empty">이 관람권 예약이 없습니다.</td></tr>`
@@ -940,6 +980,24 @@ $('onlyTodo5').onchange = renderReview;
 
 document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { go(b.dataset.go); window.scrollTo(0, 0); });
 
+/* 저장하기: 고치던 칸을 확정하고(blur) 다시 계산해 다음 단계로 넘김. 칸을 고치면 바로 반영되는 기존 동작은 그대로 */
+// 포커스가 빠지지 않아 반영이 안 된 칸이 있을 수 있으므로, 표의 모든 칸 글자를 직접 읽어서 반영
+const cellValue = td => (td.dataset.k === 'adult' || td.dataset.k === 'student') ? num(td.textContent) : td.textContent.trim();
+$('save1').onclick = () => {
+  const rows = $('tbl1')._rows || [];
+  $('tbl1').querySelectorAll('td[contenteditable]').forEach(td => { const r = rows[td.dataset.i]; if (r) r[td.dataset.k] = cellValue(td); });
+  render1();
+  toast(body2.length || state.manual ? '저장했습니다 · 2단계에 반영됨' : '저장했습니다');
+};
+$('save3').onclick = () => {
+  $('tbl3').querySelectorAll('td[contenteditable]').forEach(td => {
+    const i = Number(td.dataset.i), k = td.dataset.k, r = state.final[i], v = cellValue(td);
+    if (r && v !== r[k]) { r[k] = v; r.edited = true; (state.finalEdits[i] ||= {})[k] = v; }
+  });
+  renderFinal();
+  toast('저장했습니다 · 3·4단계에 반영됨');
+};
+
 /* ---------- 버튼 설명 말풍선 (마우스를 올리면 바로 표시) ---------- */
 const TIPS = {
   btnReset: '입력한 텍스트·엑셀·결과를 모두 지우고 처음부터 시작',
@@ -949,6 +1007,8 @@ const TIPS = {
   btnManual: '엑셀 반영이 잘 안 될 때 1단계 표를 그대로 불러와 직접 고치기',
   btnColmap: '엑셀에서 어떤 열을 쓸지 직접 고르기',
   btnPrices: '관람권 가격 칸 열기/닫기',
+  save1: '표에서 고친 내용을 저장하고 2단계에 반영',
+  save3: '표에서 고친 내용을 저장하고 3·4단계에 반영',
   priceSave: '바꾼 가격을 저장 (앞으로 기본값이 됨)',
   priceReset: '처음 가격(50,000 / 45,000 / 69,000 / 62,000)으로 되돌리기',
 };
