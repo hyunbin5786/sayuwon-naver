@@ -756,8 +756,9 @@ function renderFinal(){
     .sort((a, b) => (slotPart(a) === 'am' ? 0 : 1) - (slotPart(b) === 'am' ? 0 : 1));
   const bySlot = s => live.filter(r => r.slot === s);
   $('stat3').innerHTML = [
-    ...slots.map(s => [`${s || '(분류 없음)'} 성인/학생`, `${sum(bySlot(s),'adult')} / ${sum(bySlot(s),'student')}`]),
-    ['총 방문 인원', sum(live,'adult') + sum(live,'student') + '명'],
+    // 관람권별 방문 인원(합계 + 성인·학생)과 전체 총 방문 인원
+    ...slots.map(s => [`${s || '(분류 없음)'} · 성인 ${sum(bySlot(s),'adult')} / 학생 ${sum(bySlot(s),'student')}`, `${sum(bySlot(s),'adult') + sum(bySlot(s),'student')}명`]),
+    [`총 방문 인원 · 성인 ${sum(live,'adult')} / 학생 ${sum(live,'student')}`, sum(live,'adult') + sum(live,'student') + '명'],
     ['부분취소 반영', state.final.filter(r=>r.status==='partial'||r.status==='warn').length + '건'],
   ].map(([l,v]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
   const tag = { ok:['정상','ok'], full:['제외','bad'], partial:['차감','warn'], warn:['확인 필요','bad'] };
