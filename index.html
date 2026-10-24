@@ -131,7 +131,7 @@ img.preview{max-width:100%;max-height:320px;border-radius:8px;margin-top:10px;di
     <details style="margin-top:10px"><summary class="hint" style="cursor:pointer">파일 대신 표를 붙여넣기</summary>
       <textarea id="in2" placeholder="엑셀 범위를 복사해서 붙여넣기 (머리글 행 포함)" style="min-height:110px;margin-top:8px"></textarea>
     </details>
-    <div class="row" id="prices2">
+    <div class="row" id="prices2" style="display:none">
       <b style="font-size:14px">관람권 가격</b>
       <label class="chk">평일 성인 <input type="number" step="1000" data-price="weekday.adult" style="width:100px"></label>
       <label class="chk">평일 학생 <input type="number" step="1000" data-price="weekday.student" style="width:100px"></label>
@@ -144,6 +144,7 @@ img.preview{max-width:100%;max-height:320px;border-radius:8px;margin-top:10px;di
       <button class="btn" id="btnCheck">확인하기</button>
       <button class="btn ghost" id="btnManual" style="border-color:var(--bad);color:var(--bad)">오류 · 1단계 표로 직접 수정</button>
       <button class="btn ghost" id="btnColmap" style="display:none">엑셀 열 인식 수정하기</button>
+      <button class="btn ghost" id="btnPrices">관람권 가격 수정하기</button>
     </div>
     <div class="row" id="colmap2" style="display:none"></div>
   </div>
@@ -219,6 +220,7 @@ function resetAll(){
   $('res1').style.display = 'none'; $('res3').style.display = 'none';
   $('sep1').value = ','; $('hdr1').checked = false;
   renderPrices();                 // 저장하지 않은 가격 입력은 저장된 값으로 되돌림
+  $('prices2').style.display = 'none';
   try { $('pw2').value = localStorage.getItem(PW_KEY) || ''; } catch { $('pw2').value = ''; }
   setWorkDate(new Date());        // 작업 날짜·요금 기준은 오늘로
   go(1); window.scrollTo(0, 0);
@@ -576,6 +578,12 @@ function detectCols(header){
   }
   return map;
 }
+// 관람권 가격 칸도 평소에는 숨기고 [관람권 가격 수정하기]를 누를 때만 펼침 (접으면 저장 안 한 입력은 되돌림)
+$('btnPrices').onclick = () => {
+  const box = $('prices2'), open = box.style.display === 'none';
+  box.style.display = open ? '' : 'none';
+  if (!open) renderPrices();
+};
 // 열 선택 칸은 평소에 숨겨 두고 [엑셀 열 인식 수정하기]를 누를 때만 펼침
 $('btnColmap').onclick = () => { const box = $('colmap2'); box.style.display = box.style.display === 'none' ? '' : 'none'; };
 function renderColMap(header, map){
@@ -801,9 +809,10 @@ function renderBulk(){
     return;
   }
   // 대리예약(실방문자가 있는 예약)은 따로 입력하므로 일괄등록 칸에서 뺌
+  // 대리예약도 일괄등록 칸에 예매자 이름·번호로 함께 넣고, 아래 표에서 따로 확인해 나중에 고침
   const proxies = src.filter(r => String(r.note || '').trim());
   const groups = new Map();
-  for (const r of src.filter(r => !String(r.note || '').trim())) {
+  for (const r of src) {
     const key = `${r.slot}|${r.adult}|${r.student}`;
     if (!groups.has(key)) groups.set(key, { slot: r.slot, adult: r.adult, student: r.student, rows: [] });
     groups.get(key).rows.push([r.name, fmtPhone(r.phone)]);
@@ -832,6 +841,7 @@ function renderBulk(){
   $('groups4').innerHTML = `<div class="grid2">${col('오전권', 'am')}${col('오후권', 'pm')}</div>` +
     (proxies.length ? `<div class="card">
       <h2>대리예약 · 별도입력</h2>
+      <p class="hint">위 일괄등록 명단에는 예매자 이름·번호로 들어가 있습니다. 실방문자는 이 표를 보고 나중에 찾아서 넣어 주세요.</p>
       <div class="tbl-wrap"><table><thead><tr><th>#</th>${COLS1.map(([k, l]) => `<th class="${k==='adult'||k==='student'?'num':''}">${l}</th>`).join('')}</tr></thead><tbody>${
         proxies.map((r, i) => `<tr><td>${i + 1}</td>${COLS1.map(([k]) => `<td class="${k==='adult'||k==='student'?'num':''}">${esc(r[k])}</td>`).join('')}</tr>`).join('')
       }</tbody></table></div></div>` : '');
