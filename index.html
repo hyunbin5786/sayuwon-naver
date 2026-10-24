@@ -336,6 +336,13 @@ function classify(product){
 }
 // 분류명에서 오전/오후 · 평일/주말 판단 (시작 시각 12시 전이면 오전)
 const slotPart = slot => { const m = String(slot).match(/\((\d{1,2}):\d{2}/); return m ? (Number(m[1]) < 12 ? 'am' : 'pm') : /오후/.test(slot) ? 'pm' : 'am'; };
+// 짧은 이름: 오전권 / 오후권 (같은 시간대에 평일·주말 분류가 함께 있으면 "오전권(주말/공휴일)"처럼 구분)
+const slotShort = (slot, all = []) => {
+  if (!slot) return '(분류 없음)';
+  const part = slotPart(slot), name = part === 'am' ? '오전권' : '오후권';
+  const twins = all.filter(s => s && slotPart(s) === part);
+  return twins.length > 1 ? `${name}(${/주말|공휴/.test(slot) ? '주말/공휴일' : '평일'})` : name;
+};
 const slotDay = slot => /주말|공휴/.test(slot) ? 'weekend' : /평일/.test(slot) ? 'weekday' : null;
 
 /* ---------- 1단계: 네이버 텍스트 파싱 ---------- */
@@ -853,7 +860,7 @@ function renderFinal(){
     return `<button type="button" class="stat" data-slot3="${esc(key ?? '')}" style="cursor:pointer;text-align:left;font:inherit;color:inherit;border:2px solid ${on ? 'var(--accent)' : 'transparent'}"><b>${value}</b><span>${label}</span></button>`;
   };
   $('stat3').innerHTML = [
-    ...slots.map(s => box(s, `${s || '(분류 없음)'} · 성인 ${sum(bySlot(s),'adult')} / 학생 ${sum(bySlot(s),'student')}`, `${sum(bySlot(s),'adult') + sum(bySlot(s),'student')}명`)),
+    ...slots.map(s => box(s, `${slotShort(s, slots)} · 성인 ${sum(bySlot(s),'adult')} / 학생 ${sum(bySlot(s),'student')}`, `${sum(bySlot(s),'adult') + sum(bySlot(s),'student')}명`)),
     box(null, `총 방문 인원 · 성인 ${sum(live,'adult')} / 학생 ${sum(live,'student')}`, sum(live,'adult') + sum(live,'student') + '명'),
     `<div class="stat"><b>${state.final.filter(r=>r.status==='partial'||r.status==='warn').length}건</b><span>부분취소 반영</span></div>`,
     `<div class="stat"><b style="color:var(--bad)">${state.final.filter(r=>r.inputErr).length}건</b><span>입력오류 (엑셀 기준 점검)</span></div>`,
