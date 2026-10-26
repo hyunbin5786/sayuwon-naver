@@ -86,6 +86,10 @@ input[type=checkbox],select,input[type=date]{cursor:pointer}
 /* 마우스를 올리면 바로 뜨는 설명 말풍선 */
 #tip{position:fixed;z-index:200;pointer-events:none;background:#22231f;color:#fff;font-size:12.5px;line-height:1.4;padding:5px 9px;border-radius:6px;max-width:280px;box-shadow:0 4px 12px rgba(0,0,0,.2);opacity:0;transition:opacity .1s}
 #tip.on{opacity:1}
+/* 4단계: 마우스를 올린 줄을 강조해서 어떤 예약을 보고 있는지 표시 */
+#tbl5 tbody tr{transition:background .08s}
+#tbl5 tbody tr:hover{background:#cde4d8;box-shadow:inset 4px 0 0 var(--accent);font-weight:600}
+@media (prefers-color-scheme: dark){ #tbl5 tbody tr:hover{background:#2f4a40} }
 .modal{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:16px}
 .modal-box{background:var(--card);color:var(--ink);border-radius:12px;padding:20px;max-width:440px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.25)}
 </style>
@@ -1010,16 +1014,17 @@ function renderReview(){
   const people = rows => rows.reduce((s, r) => s + r.adult + r.student, 0);
   // 오전권 / 오후권 / 전체 버튼: 누르면 그 관람권만 보면서 따로 체크 (각 버튼에 등록 진행 상황 표시)
   const isDone = r => !!state.checks[reviewKey(r)];
+  // 건수가 아니라 인원(명) 기준으로 표시 (1단계 네모칸처럼 성인/학생도 함께)
   const partBtn = (key, label) => {
-    const rs = key ? src.filter(r => slotPart(r.slot) === key) : src, d = rs.filter(isDone).length;
+    const rs = key ? src.filter(r => slotPart(r.slot) === key) : src;
+    const total = people(rs), done = people(rs.filter(isDone)), left = total - done;
+    const a = rs.reduce((s, r) => s + r.adult, 0), st = rs.reduce((s, r) => s + r.student, 0);
     const on = (state.filter5 || null) === key;
-    return `<button type="button" class="stat" data-part5="${key || ''}" style="cursor:pointer;text-align:left;font:inherit;color:inherit;min-width:150px;border:2px solid ${on ? 'var(--accent)' : 'transparent'}">
-      <b>${label}</b><span>등록 ${d} / ${rs.length}건 · 미등록 <b style="display:inline;font-size:inherit;color:${rs.length - d ? 'var(--bad)' : 'var(--ok)'}">${rs.length - d}</b>건</span></button>`;
+    return `<button type="button" class="stat" data-part5="${key || ''}" style="cursor:pointer;text-align:left;font:inherit;color:inherit;min-width:170px;border:2px solid ${on ? 'var(--accent)' : 'transparent'}">
+      <b>${label} · ${total}명</b><span>성인 ${a} / 학생 ${st}<br>등록 ${done}명 · 미등록 <b style="display:inline;font-size:inherit;color:${left ? 'var(--bad)' : 'var(--ok)'}">${left}</b>명</span></button>`;
   };
   const view = state.filter5 ? src.filter(r => slotPart(r.slot) === state.filter5) : src;
-  const viewDone = view.filter(isDone);
-  $('stat5').innerHTML = partBtn('am', '오전권') + partBtn('pm', '오후권') + partBtn(null, '전체') +
-    `<div class="stat"><b>${people(viewDone)} / ${people(view)}명</b><span>${state.filter5 === 'am' ? '오전권' : state.filter5 === 'pm' ? '오후권' : '전체'} 등록 완료 인원</span></div>`;
+  $('stat5').innerHTML = partBtn('am', '오전권') + partBtn('pm', '오후권') + partBtn(null, '전체');
   $('stat5').querySelectorAll('[data-part5]').forEach(b => b.onclick = () => { state.filter5 = b.dataset.part5 || null; renderReview(); });
   // 기본은 성인수 오름차순. 예매자·성인수·학생수 버튼으로 바꿀 수 있음
   if (state.sort5 === undefined) state.sort5 = { k: 'adult', dir: 'asc' };
@@ -1153,7 +1158,6 @@ function tipFor(el){
   if (d.copy) return '아래 내용을 클립보드에 복사';
   if (d.sort) return d.sort === 'name' ? '누를 때마다 ▲ 가나다순 → ▼ 가나다 역순 → ↕ 원래 순서' : '누를 때마다 ▲ 적은 인원부터 → ▼ 많은 인원부터 → ↕ 원래 순서';
   if (d.slot !== undefined || d.slot3 !== undefined) return (d.slot === '전체' || d.slot3 === '') ? '전체 예약 보기' : '이 관람권 예약만 보기 (다시 누르면 전체)';
-  if (d.key) return '시스템에 등록했으면 체크';
   if (el.id === 'checkAll5') return el.textContent.includes('해제') ? '보이는 예약의 체크를 모두 풀기' : '보이는 예약을 한 번에 모두 등록으로 체크';
   if (d.part5 !== undefined) return d.part5 === 'am' ? '오전권 예약만 보고 체크' : d.part5 === 'pm' ? '오후권 예약만 보고 체크' : '전체 예약 보기';
   if (d.sol) return '환불금액에 맞는 인원 조합 중 실제 취소된 것을 고르기';
