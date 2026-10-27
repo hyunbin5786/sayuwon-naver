@@ -254,7 +254,7 @@ function askConfirm(message, okLabel = '확인'){
 }
 // 새로고침에 기대지 않고 화면과 데이터를 직접 비움 (브라우저가 입력값을 되살리는 경우가 있어서)
 function resetAll(){
-  Object.assign(state, { rows: [], refunds: [], final: [], finalEdits: {}, unmatched: [], manual: false, filter1: null, filter3: null, sort1: null, sort3: null, checks: {}, excel: new Map(), filter5: null, sort5: { k: 'adult', dir: 'asc' } });
+  Object.assign(state, { rows: [], refunds: [], final: [], finalEdits: {}, unmatched: [], manual: false, filter1: null, filter3: null, sort1: null, sort3: null, checks: {}, copies: {}, excel: new Map(), filter5: null, sort5: { k: 'adult', dir: 'asc' } });
   $('onlyTodo5').checked = false; $('stat5').innerHTML = ''; $('tbl5').innerHTML = '';
   sheetRows = null; header2 = []; body2 = []; colMap = {};
   document.querySelectorAll('textarea').forEach(t => t.value = '');
@@ -280,7 +280,14 @@ function go(n){
 }
 document.addEventListener('click', e => {
   const id = e.target.dataset?.copy; if (!id) return;
-  navigator.clipboard.writeText($(id).value).then(() => toast('복사했습니다'));
+  navigator.clipboard.writeText($(id).value).then(() => {
+    toast('복사했습니다');
+    const key = e.target.dataset.ckey;
+    if (key == null) return;
+    state.copies = state.copies || {};
+    state.copies[key] = (state.copies[key] || 0) + 1;
+    e.target.nextElementSibling.outerHTML = copyCount(key);
+  });
 });
 
 /* 상태 */
@@ -950,6 +957,11 @@ function renderFinal(){
 }
 
 /* ---------- 3단계: 일괄등록 (분류·인원이 같은 예약끼리 한 칸) ---------- */
+// 칸마다 복사 버튼을 누른 횟수 (분류|성인|학생 기준이라 탭을 다시 열어도 유지)
+const copyCount = key => {
+  const c = (state.copies || {})[key] || 0;
+  return `<span class="copycnt" style="font-size:14px;font-weight:${c ? 700 : 400};color:${c ? 'var(--accent)' : 'var(--muted)'}">${c ? `복사 ${c}회` : '아직 복사 안 함'}</span>`;
+};
 function renderBulk(){
   // 2단계 최종 인원을 그대로 사용
   const src = state.final.filter(r => r.status !== 'full' && r.adult + r.student > 0);
@@ -964,7 +976,7 @@ function renderBulk(){
   const groups = new Map();
   for (const r of src) {
     const key = `${r.slot}|${r.adult}|${r.student}`;
-    if (!groups.has(key)) groups.set(key, { slot: r.slot, adult: r.adult, student: r.student, rows: [] });
+    if (!groups.has(key)) groups.set(key, { key, slot: r.slot, adult: r.adult, student: r.student, rows: [] });
     groups.get(key).rows.push([r.name, fmtPhone(r.phone)]);
   }
   const list = [...groups.values()].sort((a, b) => String(a.slot).localeCompare(String(b.slot), 'ko') || a.adult - b.adult || a.student - b.student);
@@ -978,7 +990,7 @@ function renderBulk(){
       <div style="font-size:17px;font-weight:700;margin:0 0 8px">${[g.adult ? `성인 ${g.adult}` : '', g.student ? `학생 ${g.student}` : ''].filter(Boolean).join(' · ')} <span style="color:var(--accent)">· ${g.rows.length}건</span></div>
       ${showSlot ? `<p class="hint" style="margin:-4px 0 8px">${esc(g.slot)}</p>` : ''}
       <textarea class="out" id="bulk${i}" readonly style="min-height:${Math.min(60 + g.rows.length * 20, 240)}px">${esc(toLines(g.rows, ','))}</textarea>
-      <div class="row" style="margin-bottom:0"><button class="btn ghost" data-copy="bulk${i}">복사</button></div>
+      <div class="row" style="margin-bottom:0;align-items:center"><button class="btn ghost" data-copy="bulk${i}" data-ckey="${esc(g.key)}">복사</button>${copyCount(g.key)}</div>
     </div>`; };
   // 열 제목 옆 인원: 그 관람권의 전체 방문 인원 (대리예약 포함)
   const count = part => {
